@@ -1,0 +1,147 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// --------------------------------------
+// 1. CONFIGURACIÓN DE LA EMPRESA
+// --------------------------------------
+model empresa {
+  id_empresa          Int    @id @default(autoincrement())
+  nombre              String @default("AGRICOLA PAMPA BAJA S.A.C.") @db.VarChar(100)
+  ruc                 String @default("20411808972") @db.VarChar(20)
+  direccion_majes     String @default("Km 4.5 Carretera via Majes") @db.VarChar(150)
+  direccion_olmos     String @default("Proyecto de Irrigación Olmos Lote C-8") @db.VarChar(150)
+  actividad_economica String @default("Principal - 0150") @db.VarChar(50)
+  codigo_formato      String @default("FPGC 4.8 RH") @db.VarChar(20)
+  revision_actual     String @default("06") @db.VarChar(10) 
+}
+
+// --------------------------------------
+// 2. USUARIOS DEL SISTEMA
+// --------------------------------------
+model usuarios {
+  id_usuario     Int      @id @default(autoincrement())
+  nombre         String   @db.VarChar(100)
+  usuario        String   @unique @db.VarChar(50)
+  contrasena     String   @db.VarChar(255)
+  rol            String   @db.VarChar(30)
+  estado         Boolean  @default(true)
+  fecha_creacion DateTime @default(now())
+
+  capacitaciones capacitaciones[]
+}
+
+// --------------------------------------
+// 3. CAPACITACIONES
+// --------------------------------------
+model capacitaciones {
+  id_capacitacion       Int      @id @default(autoincrement())
+  codigo_acta           String   @unique @db.VarChar(50)
+  
+  tema_principal        String   @db.VarChar(255)
+  temario               String?  @db.Text
+  objetivo              String?  @db.Text
+  area_objetivo         String?  @db.VarChar(255)
+
+  sede_empresa          String   @db.VarChar(20) 
+  
+  total_hombres         Int?     @default(0)
+  total_mujeres         Int?     @default(0)
+  total_trabajadores    Int?     @default(0)
+
+  actividad             String   @db.VarChar(50) 
+  accion_correctiva     String   @db.VarChar(10)
+  modalidad             String   @db.VarChar(20)
+  categoria             String   @db.VarChar(100)
+  centros               String   @db.VarChar(100)
+
+  fecha                 DateTime @db.Date
+  hora_inicio           DateTime @db.Time
+  hora_termino          DateTime @db.Time
+  total_horas           String   @db.VarChar(50)
+
+  expositor_nombre      String   @db.VarChar(150)
+  expositor_dni         String   @db.VarChar(20)
+  expositor_institucion String?  @db.VarChar(150)
+  expositor_firma       String?  @db.Text
+  
+  revision_usada        String?  @db.VarChar(10)
+  creado_por            Int
+  fecha_registro        DateTime @default(now())
+
+  usuarios              usuarios @relation(fields: [creado_por], references: [id_usuario])
+  participantes         participantes[]
+  documentos            documentos[]
+}
+
+// --------------------------------------
+// 4. PARTICIPANTES
+// --------------------------------------
+model participantes {
+  id_participante   Int    @id @default(autoincrement())
+  id_capacitacion   Int
+  
+  numero            Int    
+  dni               String @db.VarChar(20)
+  area              String @db.VarChar(100)
+  cargo             String @db.VarChar(100)
+  apellidos_nombres String @db.VarChar(255)
+  firma             String? @db.Text
+  
+  genero            String? @db.VarChar(10)
+  condicion         String? @db.VarChar(50)
+
+  capacitaciones    capacitaciones @relation(fields: [id_capacitacion], references: [id_capacitacion], onDelete: Cascade)
+}
+
+// --------------------------------------
+// 5. DOCUMENTOS
+// --------------------------------------
+model documentos {
+  id_documento    Int      @id @default(autoincrement())
+  id_capacitacion Int
+  tipo            String   @db.VarChar(30)
+  url             String   @db.VarChar(255)
+  fecha_generado  DateTime @default(now())
+
+  capacitaciones  capacitaciones @relation(fields: [id_capacitacion], references: [id_capacitacion], onDelete: Cascade)
+}
+
+// --------------------------------------
+// 6. MAESTRO DE TRABAJADORES
+// --------------------------------------
+// CAMBIO IMPORTANTE: Renombramos el modelo a "trabajadores" para que coincida con el código
+// pero usamos @@map para que siga usando la tabla "maestro_trabajadores" en la BD.
+model trabajadores {
+  id_trabajador      Int     @id @default(autoincrement())
+  dni                String  @unique @db.VarChar(20)
+  nombres            String  @db.VarChar(150)
+  apellidos          String  @db.VarChar(150)
+  genero             String  @db.VarChar(10)
+  area               String  @db.VarChar(100)
+  cargo              String  @db.VarChar(100)
+  firma_url          String? @db.Text 
+  categoria          String?  @default("") 
+  estado             Boolean @default(true)
+
+  @@map("maestro_trabajadores") // <-- Esto conecta con tu tabla existente
+}
+
+// --------------------------------------
+// 7. PLAN ANUAL (NUEVO)
+// --------------------------------------
+model PlanAnual {
+  id_plan           Int      @id @default(autoincrement())
+  tema              String   @db.VarChar(255)
+  objetivo          String?  @db.Text
+  temario           String?  @db.Text
+  areas_objetivo    String   @db.VarChar(255)
+  mes_programado    String?  @db.VarChar(50)
+  clasificacion     String?  @db.VarChar(100)
+  creado_en         DateTime @default(now())
+}

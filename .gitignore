@@ -1,0 +1,12 @@
+# Carpetas de librerías (por si acaso hubiera en la raíz)
+node_modules/
+
+# Tu carpeta de documentos personales/manuales
+documentacion/
+
+# Archivos de sistema y editores
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log
