@@ -1,3 +1,4 @@
+// frontend/context/AuthContext.tsx
 'use client';
 import { createContext, useContext, useEffect, useState } from 'react';
 import { Usuario } from '@/types';
@@ -9,13 +10,16 @@ interface AuthContextType {
     loading: boolean;
     login: (usuario: string, contrasena: string) => Promise<void>;
     logout: () => void;
+    // 🟢 CORRECCIÓN 1: Usamos Partial<Usuario> en lugar de any
+    actualizarUserSesion: (nuevosDatos: Partial<Usuario>) => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
     user: null,
     loading: true,
     login: async () => { },
-    logout: () => { }
+    logout: () => { },
+    actualizarUserSesion: () => { },
 });
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
@@ -24,11 +28,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const router = useRouter();
 
     useEffect(() => {
-        // 1. Cargar sesión desde localStorage al iniciar
         const cargarSesion = () => {
-            // Verificamos que estemos en el navegador antes de acceder a localStorage
             if (typeof window !== 'undefined') {
                 const token = localStorage.getItem('token');
+                // 🟢 CORRECCIÓN 2: Asegúrate de usar la misma clave siempre ('user')
                 const userStored = localStorage.getItem('user');
 
                 if (token && userStored) {
@@ -47,24 +50,33 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     const login = async (usuario: string, contrasena: string) => {
         try {
-            // 2. LLAMADA A LA RUTA CORRECTA
-            const { data } = await api.post('/auth/login', { usuario, password: contrasena });
+            const { data } = await api.post('/auth/login', { usuario, contrasena });
+            const { token, usuario: usuarioData } = data; // Asegúrate de que el backend devuelve 'usuario' o 'user'
 
-            // 3. RECIBIMOS EL TOKEN Y EL USUARIO
-            const { token, user: usuarioData } = data;
-
-            // 4. GUARDAMOS EN LOCALSTORAGE
             localStorage.setItem('token', token);
             localStorage.setItem('user', JSON.stringify(usuarioData));
 
-            // 5. ACTUALIZAMOS ESTADO Y REDIRIGIMOS
             setUser(usuarioData);
             router.push('/dashboard');
 
-        } catch (error: unknown) { // <--- CORRECCIÓN: Usamos 'unknown' en lugar de 'any'
+        } catch (error: unknown) {
             console.error("Error Login:", error);
             throw error;
         }
+    };
+
+    // 🟢 CORRECCIÓN 3: Implementación con tipado seguro
+    const actualizarUserSesion = (nuevosDatos: Partial<Usuario>) => {
+        if (!user) return;
+
+        // Fusionamos lo que ya había con lo nuevo
+        const usuarioActualizado = { ...user, ...nuevosDatos };
+
+        // 1. Actualizamos el estado de React
+        setUser(usuarioActualizado);
+
+        // 2. Actualizamos el LocalStorage (clave 'user' para ser consistente)
+        localStorage.setItem('user', JSON.stringify(usuarioActualizado));
     };
 
     const logout = () => {
@@ -75,7 +87,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
 
     return (
-        <AuthContext.Provider value={{ user, loading, login, logout }}>
+        <AuthContext.Provider value={{ user, loading, login, logout, actualizarUserSesion }}>
             {children}
         </AuthContext.Provider>
     );
