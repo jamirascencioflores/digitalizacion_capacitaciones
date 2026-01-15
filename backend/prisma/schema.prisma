@@ -141,6 +141,7 @@ model PlanAnual {
   objetivo          String?  @db.Text
   temario           String?  @db.Text
   areas_objetivo    String   @db.VarChar(255)
+  categoria         String?
   mes_programado    String?  @db.VarChar(50)
   clasificacion     String?  @db.VarChar(100)
   creado_en         DateTime @default(now())

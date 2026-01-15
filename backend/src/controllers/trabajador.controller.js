@@ -2,6 +2,9 @@
 
 const prisma = require("../utils/db");
 const path = require("path");
+const XLSX = require("xlsx"); // Asegúrate de tener: npm install xlsx
+const fs = require("fs");
+const { parsearExcelNisira } = require("../utils/nisiraParser");
 
 // 1. LISTAR TODOS
 const obtenerTrabajadores = async (req, res) => {
@@ -164,6 +167,192 @@ const cargaMasivaFirmas = async (req, res) => {
   }
 };
 
+// 🟢 6. IMPORTAR EXCEL INTELIGENTE (NUEVO)
+const importarExcelInteligente = async (req, res) => {
+  try {
+    if (!req.file)
+      return res.status(400).json({ error: "Sube un archivo Excel (.xlsx)" });
+
+    const filePath = req.file.path;
+    const workbook = XLSX.readFile(filePath);
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+
+    // Convertimos a JSON crudo (array de arrays)
+    const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+    // Borramos el archivo temporal
+    fs.unlinkSync(filePath);
+
+    if (rawData.length < 2)
+      return res.status(400).json({ error: "El Excel está vacío" });
+
+    // FILA 0: CABECERAS (Detectamos sinónimos)
+    const headers = rawData[0].map((h) =>
+      String(h)
+        .toLowerCase()
+        .trim()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+    );
+
+    // Función para buscar índice de columna por palabras clave
+    const findCol = (keywords) =>
+      headers.findIndex((h) => keywords.some((k) => h.includes(k)));
+
+    // DICCIONARIO DE SINÓNIMOS
+    const idxDNI = findCol([
+      "dni",
+      "documento",
+      "cedula",
+      "codigogeneral",
+      "idcodigo",
+    ]);
+    const idxNombres = findCol([
+      "nombres",
+      "nombre",
+      "colaborador",
+      "empleado",
+    ]); // Si viene junto, usaremos lógica de split
+    const idxApellidos = findCol(["apellidos", "apellido", "paterno"]);
+    const idxArea = findCol([
+      "area",
+      "unidad",
+      "departamento",
+      "seccion",
+      "centro costo",
+    ]);
+    const idxCargo = findCol(["cargo", "puesto", "ocupacion", "labor"]);
+    const idxGenero = findCol(["genero", "sexo"]);
+
+    if (idxDNI === -1)
+      return res
+        .status(400)
+        .json({ error: "No encontré columna DNI (o Código General)" });
+
+    let procesados = 0;
+    let errores = 0;
+
+    // ITERAR FILAS (Desde la fila 1, ignorando cabecera)
+    for (let i = 1; i < rawData.length; i++) {
+      const row = rawData[i];
+      if (!row || row.length === 0) continue;
+
+      let dni = row[idxDNI];
+      // Limpieza DNI: solo números y ceros a la izquierda
+      if (dni) dni = String(dni).replace(/\D/g, "").padStart(8, "0");
+
+      if (!dni || dni.length < 8) {
+        errores++;
+        continue;
+      }
+
+      // Lógica Nombres y Apellidos
+      let nombres = "SIN NOMBRE";
+      let apellidos = "SIN APELLIDO";
+
+      if (idxNombres !== -1 && idxApellidos !== -1) {
+        // Caso ideal: Columnas separadas
+        nombres = row[idxNombres] || nombres;
+        apellidos = row[idxApellidos] || apellidos;
+      } else if (idxNombres !== -1) {
+        // Caso difícil: Nombre completo en una sola celda (Ej: "PEREZ LOPEZ, JUAN")
+        const completo = String(row[idxNombres]).trim();
+        if (completo.includes(",")) {
+          // Formato: APELLIDOS, NOMBRES
+          const partes = completo.split(",");
+          apellidos = partes[0].trim();
+          nombres = partes[1].trim();
+        } else {
+          // Formato: NOMBRES APELLIDOS (Adivinanza simple)
+          const partes = completo.split(" ");
+          if (partes.length > 2) {
+            apellidos = partes.slice(-2).join(" "); // Últimos 2 son apellidos
+            nombres = partes.slice(0, -2).join(" ");
+          } else {
+            nombres = partes[0];
+            apellidos = partes.slice(1).join(" ");
+          }
+        }
+      }
+
+      const area =
+        idxArea !== -1 ? String(row[idxArea] || "General").trim() : "General";
+      const cargo =
+        idxCargo !== -1
+          ? String(row[idxCargo] || "Trabajador").trim()
+          : "Trabajador";
+
+      // Género (Intentar detectar M/F)
+      let genero = "M";
+      if (idxGenero !== -1) {
+        const gRaw = String(row[idxGenero]).toUpperCase();
+        if (gRaw.startsWith("F") || gRaw.includes("MUJER")) genero = "F";
+      }
+
+      // GUARDAR O ACTUALIZAR (UPSERT)
+      try {
+        await prisma.trabajadores.upsert({
+          where: { dni },
+          update: { nombres, apellidos, area, cargo, genero },
+          create: {
+            dni,
+            nombres,
+            apellidos,
+            area,
+            cargo,
+            genero,
+            estado: true,
+          },
+        });
+        procesados++;
+      } catch (e) {
+        errores++;
+      }
+    }
+
+    res.json({ mensaje: "Importación finalizada", procesados, errores });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Error procesando Excel" });
+  }
+};
+
+// 🟢 7. ELIMINAR FIRMA (NUEVO)
+const eliminarFirma = async (req, res) => {
+  try {
+    const { id } = req.params;
+    await prisma.trabajadores.update({
+      where: { id_trabajador: Number(id) },
+      data: { firma_url: null }, // Ponemos null para borrarla
+    });
+    res.json({ mensaje: "Firma eliminada correctamente" });
+  } catch (error) {
+    res.status(500).json({ error: "Error al eliminar firma" });
+  }
+};
+
+// 🟢 NUEVA FUNCIÓN: Actualizar datos generales de un trabajador
+const actualizarTrabajador = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Extraemos el id_trabajador del body para NO intentar actualizar la llave primaria
+    // 'datos' contendrá: dni, nombres, apellidos, cargo, firma_url, etc.
+    const { id_trabajador, ...datos } = req.body;
+
+    const trabajadorActualizado = await prisma.trabajadores.update({
+      where: { id_trabajador: parseInt(id) },
+      data: datos,
+    });
+
+    return res.json(trabajadorActualizado);
+  } catch (error) {
+    console.error("Error actualizando trabajador:", error);
+    return res.status(500).json({ message: "Error al actualizar trabajador" });
+  }
+};
+
 module.exports = {
   obtenerTrabajadores,
   buscarPorDNI,
@@ -171,4 +360,7 @@ module.exports = {
   eliminarTrabajador,
   cargaMasivaFirmas,
   getTrabajadoresSelect,
+  importarExcelInteligente,
+  eliminarFirma,
+  actualizarTrabajador,
 };

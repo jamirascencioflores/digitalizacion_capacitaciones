@@ -15,7 +15,7 @@ const normalizar = (texto) => {
     : "";
 };
 
-// --- NUEVO: HELPER PARA CALCULAR TOTALES EN BACKEND (INFALIBLE) ---
+// --- HELPER PARA CALCULAR TOTALES EN BACKEND (INFALIBLE) ---
 const calcularTotalesDesdeLista = (listaParticipantes) => {
   let hombres = 0;
   let mujeres = 0;
@@ -40,6 +40,31 @@ const calcularTotalesDesdeLista = (listaParticipantes) => {
     total_mujeres: mujeres,
     total_trabajadores: hombres + mujeres,
   };
+};
+
+// 🟢 NUEVO: HELPER PARA SINCRONIZAR FIRMAS AL MAESTRO AUTOMÁTICAMENTE
+const sincronizarFirmasConMaestro = async (participantes) => {
+  if (!participantes || !Array.isArray(participantes)) return;
+
+  // Filtramos solo los que tienen DNI y alguna FIRMA (url o base64)
+  const conFirma = participantes.filter(
+    (p) => p.dni && (p.firma_url || p.firma)
+  );
+
+  // Ejecutamos en paralelo (sin await para no frenar la respuesta al usuario)
+  conFirma.forEach(async (p) => {
+    try {
+      const firmaParaGuardar = p.firma_url || p.firma;
+      // Buscamos si existe el trabajador en el MAESTRO y actualizamos su firma
+      await prisma.trabajadores.update({
+        where: { dni: p.dni },
+        data: { firma_url: firmaParaGuardar },
+      });
+    } catch (e) {
+      // Si el trabajador no existe en el maestro o falla, lo ignoramos silenciosamente
+      // console.log(`Info: No se pudo sincronizar firma para DNI ${p.dni}`);
+    }
+  });
 };
 
 // --- 1. CREAR (POST) ---
@@ -73,7 +98,7 @@ const crearCapacitacion = async (req, res) => {
         )
     );
 
-    // 2. CÁLCULO REAL EN EL BACKEND (Ignoramos lo que manda el front)
+    // 2. CÁLCULO REAL EN EL BACKEND
     const calculo = calcularTotalesDesdeLista(participantes);
 
     const existe = await prisma.capacitaciones.findUnique({
@@ -117,7 +142,7 @@ const crearCapacitacion = async (req, res) => {
             cargo: p.cargo,
             genero: p.genero || "M",
             condicion: p.condicion || "",
-            firma: p.firma_url || null,
+            firma: p.firma_url || null, // Guardamos en tabla participantes
           })),
         },
       },
@@ -132,6 +157,9 @@ const crearCapacitacion = async (req, res) => {
       }));
       await prisma.documentos.createMany({ data: documentosData });
     }
+
+    // 🟢 MAGIA AQUÍ: Sincronizar firmas al Maestro
+    sincronizarFirmasConMaestro(participantes);
 
     res.status(201).json({ mensaje: "Registrado con éxito", data: nueva });
   } catch (error) {
@@ -161,7 +189,7 @@ const obtenerCapacitaciones = async (req, res) => {
   }
 };
 
-// --- 3. OBTENER UNA (DETALLE) CON CÁLCULO INTELIGENTE ---
+// --- 3. OBTENER UNA (DETALLE) ---
 const obtenerCapacitacion = async (req, res) => {
   try {
     const { id } = req.params;
@@ -177,7 +205,14 @@ const obtenerCapacitacion = async (req, res) => {
 
     if (!capacitacion) return res.status(404).json({ error: "No encontrado" });
 
-    // 2. DETERMINAR LAS ÁREAS OBJETIVO (Lógica Mejorada)
+    // 🟢 CORRECCIÓN: Mapear 'firma' (BD) a 'firma_url' (Frontend)
+    // Esto asegura que al editar, el frontend vea la firma guardada
+    const participantesMapeados = capacitacion.participantes.map((p) => ({
+      ...p,
+      firma_url: p.firma,
+    }));
+
+    // 2. DETERMINAR LAS ÁREAS OBJETIVO
     let areasParaBuscar = [];
 
     if (capacitacion.area_objetivo) {
@@ -230,8 +265,10 @@ const obtenerCapacitacion = async (req, res) => {
       faltantes = trabajadoresObjetivo.filter((t) => !asistentesDNI.has(t.dni));
     }
 
+    // Enviamos 'participantesMapeados' en lugar de 'capacitacion.participantes' original
     res.json({
       ...capacitacion,
+      participantes: participantesMapeados,
       faltantes,
       area_objetivo: capacitacion.area_objetivo || areasParaBuscar.join(", "),
     });
@@ -257,13 +294,13 @@ const actualizarCapacitacion = async (req, res) => {
           .json({ error: "Formato de participantes inválido" });
       }
     }
-    // ---> AGREGAR ESTO: FILTRO DE DUPLICADOS <---
+    // FILTRO DE DUPLICADOS
     participantes = participantes.filter(
       (p, index, self) =>
         index === self.findIndex((t) => t.dni === p.dni && t.dni !== "")
     );
 
-    // 2. CÁLCULO DE TOTALES EN BACKEND (INFALIBLE)
+    // 2. CÁLCULO DE TOTALES EN BACKEND
     const calculo = calcularTotalesDesdeLista(participantes);
 
     // 3. Validar Fechas
@@ -313,12 +350,11 @@ const actualizarCapacitacion = async (req, res) => {
       expositor_dni: resto.expositor_dni,
       expositor_institucion: resto.institucion_procedencia,
 
-      // FIX ARRAY DE FIRMA: Si llega array, toma el primero; si es string, lo deja.
       expositor_firma: Array.isArray(resto.expositor_firma)
         ? resto.expositor_firma[0]
         : resto.expositor_firma,
 
-      // USAMOS EL CÁLCULO DEL BACKEND (Sobrescribe lo que venga del front)
+      // USAMOS EL CÁLCULO DEL BACKEND
       total_hombres: calculo.total_hombres,
       total_mujeres: calculo.total_mujeres,
       total_trabajadores: calculo.total_trabajadores,
@@ -336,7 +372,8 @@ const actualizarCapacitacion = async (req, res) => {
           area: p.area,
           cargo: p.cargo,
           genero: p.genero || "M",
-          firma: p.firma_url || null,
+          // Guardamos firma (puede venir como firma_url del front o firma si ya existía)
+          firma: p.firma_url || p.firma || null,
         })),
       },
     };
@@ -356,6 +393,9 @@ const actualizarCapacitacion = async (req, res) => {
       }));
       await prisma.documentos.createMany({ data: documentosData });
     }
+
+    // 🟢 MAGIA AQUÍ: Sincronizar firmas al Maestro también en Update
+    sincronizarFirmasConMaestro(participantes);
 
     res.json({ mensaje: "Actualizado correctamente", data: actualizado });
   } catch (error) {
@@ -586,7 +626,7 @@ const exportarExcel = async (req, res) => {
   }
 };
 
-// --- CORRECCIÓN FINAL: Obtener detalle de cumplimiento (Blindado contra duplicados) ---
+// --- OBTENER DETALLE CUMPLIMIENTO ---
 const obtenerDetalleCumplimiento = async (req, res) => {
   const { id } = req.params;
   try {
@@ -608,7 +648,7 @@ const obtenerDetalleCumplimiento = async (req, res) => {
     });
 
     // 3. Determinar Meta ÚNICA (Trabajadores Objetivo)
-    const trabajadoresObjetivoMap = new Map(); // Usamos Map para garantizar unicidad por DNI
+    const trabajadoresObjetivoMap = new Map();
     let areasObjetivoSet = new Set();
 
     if (coincidenciasPlan.length > 0) {
@@ -627,15 +667,12 @@ const obtenerDetalleCumplimiento = async (req, res) => {
 
       todosTrabajadores.forEach((t) => {
         const areaT = normalizar(t.area);
-        // Si el trabajador pertenece a una de las áreas objetivo
         if (areasNorm.some((areaPlan) => areaT.includes(areaPlan))) {
-          // Lo agregamos al Map usando su DNI como clave (esto elimina duplicados automáticamente)
           trabajadoresObjetivoMap.set(t.dni, t);
         }
       });
     }
 
-    // Convertimos el Map a Array para usarlo después
     const trabajadoresObjetivo = Array.from(trabajadoresObjetivoMap.values());
 
     // 4. Determinar Asistentes ÚNICOS
@@ -645,24 +682,17 @@ const obtenerDetalleCumplimiento = async (req, res) => {
     });
 
     // 5. Cálculos Finales
-    const meta = trabajadoresObjetivo.length; // Cantidad de personas únicas objetivo
-
-    // Asistentes Válidos: Trabajadores objetivo que SÍ asistieron
+    const meta = trabajadoresObjetivo.length;
     const asistentesValidos = trabajadoresObjetivo.filter((t) =>
       dnisAsistentes.has(t.dni)
     ).length;
 
-    // Faltantes: Trabajadores objetivo que NO asistieron
     const faltantes = trabajadoresObjetivo.filter(
       (t) => !dnisAsistentes.has(t.dni)
     );
 
     const cobertura =
       meta > 0 ? ((asistentesValidos / meta) * 100).toFixed(1) : 0;
-
-    // NOTA: 'asistentes_totales' muestra cuántos firmaron la hoja (pueden ser más que la meta si hubo invitados)
-    // Pero para evitar confusión, mostramos 'asistentesValidos' si queremos ser estrictos con el cumplimiento.
-    // Dejaré 'dnisAsistentes.size' para reflejar la asistencia real del evento.
 
     res.json({
       capacitacion: {
@@ -674,8 +704,8 @@ const obtenerDetalleCumplimiento = async (req, res) => {
       areas_involucradas: Array.from(areasObjetivoSet),
       estadisticas: {
         meta_total: meta,
-        asistentes_totales: dnisAsistentes.size, // Total de cabezas únicas en la sala
-        asistentes_validos: asistentesValidos, // Total de cabezas que "debían" estar y estuvieron
+        asistentes_totales: dnisAsistentes.size,
+        asistentes_validos: asistentesValidos,
         cobertura_porcentaje: Number(cobertura),
       },
       faltantes: faltantes.map((t) => ({

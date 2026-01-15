@@ -7,20 +7,24 @@ const path = require("path");
 async function main() {
   console.log("🌱 Iniciando Carga de Trabajadores...");
 
-  // 1. LIMPIEZA TOTAL (Para evitar duplicados o errores de IDs)
+  // 1. LIMPIEZA TOTAL
   console.log("🗑️  Limpiando base de datos...");
-  // Borramos en orden estricto por las llaves foráneas
+  // Nota: Asegúrate que el orden de borrado respete tus llaves foráneas
   await prisma.participantes.deleteMany({});
   await prisma.documentos.deleteMany({});
   await prisma.capacitaciones.deleteMany({});
   await prisma.trabajadores.deleteMany({});
 
-  // 2. CARGAR TRABAJADORES DESDE JSON
-  console.log("📂 Leyendo 'trabajadores.json'...");
-  const filePath = path.join(__dirname, "trabajadores.json");
+  // 2. CARGAR TRABAJADORES DESDE EL JSON LIMPIO
+  const archivoNombre = "trabajadores_limpio.json"; // 🟢 CAMBIO AQUÍ
+  console.log(`📂 Leyendo '${archivoNombre}'...`);
+
+  const filePath = path.join(__dirname, archivoNombre);
 
   if (!fs.existsSync(filePath)) {
-    console.error("❌ Error: No se encontró el archivo trabajadores.json");
+    console.error(`❌ Error: No se encontró el archivo ${archivoNombre}`);
+    // Tip: Si el script de limpieza lo dejó en la raíz, quizás debas ajustar la ruta:
+    // path.join(__dirname, "..", "trabajadores_limpio.json");
     return;
   }
 
@@ -29,29 +33,25 @@ async function main() {
 
   console.log(`👥 Procesando ${trabajadoresJson.length} trabajadores...`);
 
-  // 3. MAPEO Y LIMPIEZA DE DATOS
-  const trabajadoresLimpio = trabajadoresJson.map((t) => ({
-    dni: String(t.dni).trim(),
-    nombres: t.nombres?.trim(),
-    apellidos: t.apellidos?.trim(),
-    genero: t.genero?.trim(),
-    area: t.area?.trim(),
-    cargo: t.cargo?.trim(),
-    // Lógica para limpiar la categoría (si viene 'nan', vacío o null)
-    categoria:
-      t.categoria && String(t.categoria).toLowerCase() !== "nan"
-        ? String(t.categoria).trim().toUpperCase()
-        : null,
+  // 3. MAPEO DIRECTO
+  // Como el JSON ya está limpio, solo asignamos los campos
+  const dataInsertar = trabajadoresJson.map((t) => ({
+    dni: t.dni, // Ya es string y correcto
+    nombres: t.nombres,
+    apellidos: t.apellidos,
+    genero: t.genero,
+    area: t.area,
+    cargo: t.cargo,
+    categoria: t.categoria || "", // Si viene null o vacío, guardamos cadena vacía
     estado: true,
   }));
 
   // 4. INSERTAR EN LA BASE DE DATOS
   await prisma.trabajadores.createMany({
-    data: trabajadoresLimpio,
-    skipDuplicates: true, // Seguridad extra por si el JSON tiene DNIs repetidos
+    data: dataInsertar,
+    skipDuplicates: true,
   });
 
-  // Confirmación
   const total = await prisma.trabajadores.count();
   console.log(
     `✅ ¡Éxito! Se han insertado ${total} trabajadores en la base de datos.`

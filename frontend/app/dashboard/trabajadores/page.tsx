@@ -1,43 +1,60 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import api from '@/services/api';
 import { uploadImageToLocal } from '@/services/upload.service';
 import {
     Users, Search, Plus, Edit, Trash2,
     Save, X, CheckCircle2, UploadCloud, Loader2,
-    ChevronLeft, ChevronRight
+    ChevronLeft, ChevronRight, FileSpreadsheet, ChevronDown, Eraser
 } from 'lucide-react';
 
 interface Trabajador {
     id_trabajador: number;
     dni: string;
-    // CORRECCIÓN: Separamos los campos para coincidir con el backend
     nombres: string;
     apellidos: string;
     area: string;
     cargo: string;
     genero: string;
     firma_url?: string;
+    categoria?: string; // Agregado por si quieres mostrarlo en el futuro
 }
 
 export default function TrabajadoresPage() {
     const [lista, setLista] = useState<Trabajador[]>([]);
     const [loading, setLoading] = useState(true);
     const [busqueda, setBusqueda] = useState('');
+
+    // Modales
     const [modalOpen, setModalOpen] = useState(false);
+    const [modalExcelOpen, setModalExcelOpen] = useState(false);
+    const [menuNuevoOpen, setMenuNuevoOpen] = useState(false);
+
     const [editingId, setEditingId] = useState<number | null>(null);
     const [uploadingFirma, setUploadingFirma] = useState(false);
     const [subiendoMasivo, setSubiendoMasivo] = useState(false);
+    const [subiendoExcel, setSubiendoExcel] = useState(false);
 
-    // --- ESTADOS PARA PAGINACIÓN ---
+    // Paginación
     const [paginaActual, setPaginaActual] = useState(1);
     const itemsPorPagina = 30;
 
     const { register, handleSubmit, reset, setValue, watch } = useForm<Trabajador>();
+    const menuRef = useRef<HTMLDivElement>(null);
 
-    // 1. Cargar lista
+    // Cerrar menú al hacer click fuera
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+                setMenuNuevoOpen(false);
+            }
+        }
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
+
     const fetchTrabajadores = async () => {
         try {
             const { data } = await api.get('/trabajadores');
@@ -50,34 +67,33 @@ export default function TrabajadoresPage() {
     };
 
     useEffect(() => { fetchTrabajadores(); }, []);
+    useEffect(() => { setPaginaActual(1); }, [busqueda]);
 
-    // Resetear a página 1 cuando se busca algo
-    useEffect(() => {
-        setPaginaActual(1);
-    }, [busqueda]);
-
-    // 2. Guardar (Crear o Editar)
+    // Guardar (Crear/Editar)
     const onSubmit = async (data: Trabajador) => {
         try {
-            // El backend ahora espera { nombres, apellidos, ... }
-            await api.post('/trabajadores', data);
+            if (editingId) {
+                await api.put(`/trabajadores/${editingId}`, data); // Asumiendo PUT para editar
+            } else {
+                await api.post('/trabajadores', data);
+            }
             fetchTrabajadores();
             setModalOpen(false);
             reset();
+            setEditingId(null);
         } catch (error) {
             console.error(error);
             alert("Error al guardar trabajador");
         }
     };
 
-    // 3. Editar
     const handleEdit = (t: Trabajador) => {
         setEditingId(t.id_trabajador);
-        reset(t); // Esto rellenará automáticamente nombres y apellidos por separado
+        reset(t);
         setModalOpen(true);
     };
 
-    // 4. Eliminar
+    // 1. Eliminar Trabajador
     const handleDelete = async (id: number) => {
         if (!confirm("¿Eliminar trabajador?")) return;
         try {
@@ -89,7 +105,19 @@ export default function TrabajadoresPage() {
         }
     };
 
-    // 5. Subir Firma Individual
+    // 2. Eliminar Firma Individual 
+    const handleDeleteFirma = async (id: number, nombre: string) => {
+        if (!confirm(`¿Borrar la firma de ${nombre}?`)) return;
+        try {
+            await api.put(`/trabajadores/${id}/eliminar-firma`);
+            fetchTrabajadores();
+        } catch (error) {
+            console.error(error);
+            alert("Error al eliminar firma");
+        }
+    };
+
+    // 3. Subir Firma Individual
     const handleUploadFirma = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -105,53 +133,68 @@ export default function TrabajadoresPage() {
         }
     };
 
-    // 6. Carga Masiva
-    const handleCargaMasiva = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    // 4. Carga Masiva Firmas
+    const handleCargaMasivaFirmas = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = e.target.files;
         if (!files || files.length === 0) return;
-
-        if (!confirm(`Vas a subir ${files.length} firmas. \nAsegúrate de que los archivos se llamen como el DNI (ej: 44556677.jpg).\n¿Continuar?`)) {
-            e.target.value = '';
-            return;
+        if (!confirm(`Subir ${files.length} firmas (Nombre archivo = DNI). ¿Continuar?`)) {
+            e.target.value = ''; return;
         }
-
         setSubiendoMasivo(true);
         const formData = new FormData();
-        Array.from(files).forEach((file) => {
-            formData.append('firmas', file);
-        });
+        Array.from(files).forEach((file) => formData.append('firmas', file));
 
         try {
             const { data } = await api.post('/trabajadores/upload-masivo', formData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
-            alert(`Reporte de Carga:\n\n✅ Actualizados: ${data.actualizados_correctamente}\n❌ Ignorados/Errores: ${data.no_encontrados_o_error}`);
+            alert(`Reporte:\n✅ ${data.actualizados_correctamente}\n❌ ${data.no_encontrados_o_error}`);
             fetchTrabajadores();
         } catch (error) {
             console.error(error);
-            alert("Error en la carga masiva.");
+            alert("Error en carga masiva.");
         } finally {
             setSubiendoMasivo(false);
             e.target.value = '';
         }
     };
 
-    // --- LÓGICA DE FILTRADO Y PAGINACIÓN ---
-    const filtrados = lista.filter(t => {
-        // Concatenamos para buscar en el nombre completo
-        const nombreCompleto = `${t.apellidos} ${t.nombres}`.toLowerCase();
-        return nombreCompleto.includes(busqueda.toLowerCase()) ||
-            (t.dni || "").includes(busqueda);
-    });
+    // 5. 🟢 Carga Masiva EXCEL
+    const handleUploadExcel = async (e: React.FormEvent<HTMLFormElement>) => {
+        e.preventDefault();
+        const input = e.currentTarget.querySelector('input[type="file"]') as HTMLInputElement;
+        const file = input.files?.[0];
+        if (!file) return;
 
-    // Calcular índices para cortar el array
+        setSubiendoExcel(true);
+        const formData = new FormData();
+        formData.append('excel', file);
+
+        try {
+            // Asegúrate que esta ruta coincida con tu backend ('/upload-trabajadores' o '/trabajadores/importar-excel')
+            const { data } = await api.post('/trabajadores/importar-excel', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+
+            alert(`Importación Finalizada:\n👥 Procesados: ${data.processed || data.procesados || 0}`);
+            fetchTrabajadores();
+            setModalExcelOpen(false);
+        } catch (error) {
+            console.error(error);
+            alert("Error procesando el Excel. Revisa el formato o la consola.");
+        } finally {
+            setSubiendoExcel(false);
+        }
+    };
+
+    // Filtrado y Paginación
+    const filtrados = lista.filter(t =>
+        `${t.apellidos} ${t.nombres}`.toLowerCase().includes(busqueda.toLowerCase()) ||
+        (t.dni || "").includes(busqueda)
+    );
     const indiceUltimoItem = paginaActual * itemsPorPagina;
-    const indicePrimerItem = indiceUltimoItem - itemsPorPagina;
-    const itemsActuales = filtrados.slice(indicePrimerItem, indiceUltimoItem);
+    const itemsActuales = filtrados.slice(indiceUltimoItem - itemsPorPagina, indiceUltimoItem);
     const totalPaginas = Math.ceil(filtrados.length / itemsPorPagina);
-
-    // Cambiar página
-    const cambiarPagina = (numero: number) => setPaginaActual(numero);
 
     return (
         <div className="space-y-6">
@@ -161,37 +204,45 @@ export default function TrabajadoresPage() {
                     <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
                         <Users className="text-blue-600" /> Maestro de Trabajadores
                     </h1>
-                    <p className="text-sm text-gray-500">
-                        Total: <span className="font-bold text-gray-700">{lista.length}</span> trabajadores registrados.
-                    </p>
+                    <p className="text-sm text-gray-500">Total: <b>{lista.length}</b> registros.</p>
                 </div>
 
-                <div className="flex gap-3">
+                <div className="flex gap-3 items-center">
+                    {/* Botón Carga Masiva Firmas */}
                     <div className="relative">
-                        <input
-                            type="file"
-                            id="masivo-upload"
-                            className="hidden"
-                            multiple
-                            accept="image/*"
-                            onChange={handleCargaMasiva}
-                            disabled={subiendoMasivo}
-                        />
-                        <label
-                            htmlFor="masivo-upload"
-                            className={`cursor-pointer bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 font-bold flex items-center gap-2 transition ${subiendoMasivo ? 'opacity-50 cursor-not-allowed' : ''}`}
-                        >
-                            {subiendoMasivo ? <Loader2 className="animate-spin" size={20} /> : <UploadCloud size={20} />}
-                            {subiendoMasivo ? 'Procesando...' : 'Carga Masiva Firmas'}
+                        <input type="file" id="masivo-upload" className="hidden" multiple accept="image/*" onChange={handleCargaMasivaFirmas} disabled={subiendoMasivo} />
+                        <label htmlFor="masivo-upload" className={`cursor-pointer bg-gray-100 text-gray-700 hover:bg-gray-200 px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition ${subiendoMasivo ? 'opacity-50' : ''}`}>
+                            {subiendoMasivo ? <Loader2 className="animate-spin" size={18} /> : <UploadCloud size={18} />}
+                            {subiendoMasivo ? '...' : 'Subir Firmas'}
                         </label>
                     </div>
 
-                    <button
-                        onClick={() => { setEditingId(null); reset({ genero: 'M' }); setModalOpen(true); }}
-                        className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-bold flex items-center gap-2 transition"
-                    >
-                        <Plus size={20} /> Nuevo
-                    </button>
+                    {/* Botón Nuevo con Dropdown */}
+                    <div className="relative" ref={menuRef}>
+                        <button
+                            onClick={() => setMenuNuevoOpen(!menuNuevoOpen)}
+                            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-bold flex items-center gap-2 transition"
+                        >
+                            <Plus size={20} /> Nuevo <ChevronDown size={16} />
+                        </button>
+
+                        {menuNuevoOpen && (
+                            <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-gray-100 z-50 animate-in fade-in zoom-in-95 duration-100">
+                                <button
+                                    onClick={() => { setEditingId(null); reset({ genero: 'M' }); setModalOpen(true); setMenuNuevoOpen(false); }}
+                                    className="w-full text-left px-4 py-3 hover:bg-gray-50 flex items-center gap-2 text-gray-700"
+                                >
+                                    <Users size={16} /> Individual
+                                </button>
+                                <button
+                                    onClick={() => { setModalExcelOpen(true); setMenuNuevoOpen(false); }}
+                                    className="w-full text-left px-4 py-3 hover:bg-gray-50 flex items-center gap-2 text-green-700 font-medium border-t border-gray-100"
+                                >
+                                    <FileSpreadsheet size={16} /> Importar Excel
+                                </button>
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
 
@@ -199,11 +250,9 @@ export default function TrabajadoresPage() {
             <div className="relative max-w-md">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                 <input
-                    type="text"
-                    placeholder="Buscar por DNI o Nombre..."
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    value={busqueda}
-                    onChange={e => setBusqueda(e.target.value)}
+                    type="text" placeholder="Buscar por DNI o Nombre..."
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                    value={busqueda} onChange={e => setBusqueda(e.target.value)}
                 />
             </div>
 
@@ -224,19 +273,31 @@ export default function TrabajadoresPage() {
                             {itemsActuales.map(t => (
                                 <tr key={t.id_trabajador} className="hover:bg-gray-50">
                                     <td className="px-6 py-3 font-mono text-blue-600 font-bold">{t.dni}</td>
-                                    {/* CORRECCIÓN: Concatenamos campos separados para visualizar */}
-                                    <td className="px-6 py-3 font-medium text-gray-800">
-                                        {t.apellidos} {t.nombres}
-                                    </td>
+                                    <td className="px-6 py-3 font-medium text-gray-800">{t.apellidos} {t.nombres}</td>
                                     <td className="px-6 py-3 text-gray-500">
                                         <div className="font-bold">{t.cargo}</div>
                                         <div className="text-xs">{t.area}</div>
+                                        {/* Indicador visual si es EDS/CIFHS */}
+                                        {t.categoria && (
+                                            <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded ml-1 font-bold">
+                                                {t.categoria}
+                                            </span>
+                                        )}
                                     </td>
                                     <td className="px-6 py-3 text-center">
                                         {t.firma_url ? (
-                                            <span className="inline-flex items-center gap-1 text-green-600 bg-green-50 px-2 py-1 rounded text-xs font-bold">
-                                                <CheckCircle2 size={12} /> Sí
-                                            </span>
+                                            <div className="flex items-center justify-center gap-2">
+                                                <span className="inline-flex items-center gap-1 text-green-600 bg-green-50 px-2 py-1 rounded text-xs font-bold">
+                                                    <CheckCircle2 size={12} /> Sí
+                                                </span>
+                                                <button
+                                                    onClick={() => handleDeleteFirma(t.id_trabajador, t.nombres)}
+                                                    className="text-red-400 hover:text-red-600 p-1 rounded-full hover:bg-red-50 transition"
+                                                    title="Borrar firma"
+                                                >
+                                                    <Eraser size={14} />
+                                                </button>
+                                            </div>
                                         ) : (
                                             <span className="text-gray-300 text-xs">No</span>
                                         )}
@@ -249,126 +310,93 @@ export default function TrabajadoresPage() {
                             ))}
                         </tbody>
                     </table>
-                    {itemsActuales.length === 0 && !loading && (
-                        <div className="p-8 text-center text-gray-500">No se encontraron trabajadores.</div>
-                    )}
+                    {itemsActuales.length === 0 && !loading && <div className="p-8 text-center text-gray-500">No se encontraron trabajadores.</div>}
                 </div>
 
-                {/* --- CONTROLES DE PAGINACIÓN --- */}
+                {/* Paginación */}
                 {filtrados.length > 0 && (
                     <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 bg-gray-50">
-                        <span className="text-xs text-gray-500">
-                            Mostrando <strong>{indicePrimerItem + 1}</strong> a <strong>{Math.min(indiceUltimoItem, filtrados.length)}</strong> de <strong>{filtrados.length}</strong> resultados
-                        </span>
-
+                        <span className="text-xs text-gray-500">Página {paginaActual} de {totalPaginas}</span>
                         <div className="flex gap-2">
-                            <button
-                                onClick={() => cambiarPagina(paginaActual - 1)}
-                                disabled={paginaActual === 1}
-                                className="p-2 rounded hover:bg-gray-200 disabled:opacity-50 disabled:hover:bg-transparent"
-                            >
-                                <ChevronLeft size={16} />
-                            </button>
-
-                            <div className="flex items-center gap-1">
-                                {Array.from({ length: Math.min(5, totalPaginas) }, (_, i) => {
-                                    let pageNum = i + 1;
-                                    if (totalPaginas > 5 && paginaActual > 3) {
-                                        pageNum = paginaActual - 2 + i;
-                                    }
-                                    if (pageNum > totalPaginas) return null;
-
-                                    return (
-                                        <button
-                                            key={pageNum}
-                                            onClick={() => cambiarPagina(pageNum)}
-                                            className={`w-8 h-8 flex items-center justify-center rounded text-xs font-bold transition ${paginaActual === pageNum
-                                                ? 'bg-blue-600 text-white'
-                                                : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-100'
-                                                }`}
-                                        >
-                                            {pageNum}
-                                        </button>
-                                    );
-                                })}
-                            </div>
-
-                            <button
-                                onClick={() => cambiarPagina(paginaActual + 1)}
-                                disabled={paginaActual === totalPaginas}
-                                className="p-2 rounded hover:bg-gray-200 disabled:opacity-50 disabled:hover:bg-transparent"
-                            >
-                                <ChevronRight size={16} />
-                            </button>
+                            <button onClick={() => setPaginaActual(p => Math.max(1, p - 1))} disabled={paginaActual === 1} className="p-2 rounded hover:bg-gray-200 disabled:opacity-50"><ChevronLeft size={16} /></button>
+                            <button onClick={() => setPaginaActual(p => Math.min(totalPaginas, p + 1))} disabled={paginaActual === totalPaginas} className="p-2 rounded hover:bg-gray-200 disabled:opacity-50"><ChevronRight size={16} /></button>
                         </div>
                     </div>
                 )}
             </div>
 
-            {/* MODAL */}
+            {/* MODAL EXCEL */}
+            {modalExcelOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 animate-in fade-in zoom-in duration-200">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                                <FileSpreadsheet className="text-green-600" /> Importar Excel
+                            </h3>
+                            <button onClick={() => setModalExcelOpen(false)}><X className="text-gray-400 hover:text-gray-600" /></button>
+                        </div>
+
+                        <div className="bg-blue-50 text-blue-800 p-4 rounded-lg text-sm mb-6">
+                            <p className="font-bold mb-1">Instrucciones:</p>
+                            <ul className="list-disc pl-4 space-y-1">
+                                <li>Sube el reporte de Nisira (CSV o Excel).</li>
+                                <li>El sistema limpiará y unirá las líneas rotas automáticamente.</li>
+                                <li>Actualizará DNI, Nombres, Cargo, Área y Categoría (EDS, CIFHS).</li>
+                            </ul>
+                        </div>
+
+                        <form onSubmit={handleUploadExcel} className="space-y-4">
+                            <input type="file" required accept=".csv, .xlsx, .xls" className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
+
+                            <div className="flex justify-end gap-3 pt-4">
+                                <button type="button" onClick={() => setModalExcelOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancelar</button>
+                                <button type="submit" disabled={subiendoExcel} className="px-6 py-2 bg-green-600 text-white rounded hover:bg-green-700 font-bold flex items-center gap-2 disabled:opacity-50">
+                                    {subiendoExcel ? <Loader2 className="animate-spin" size={18} /> : <UploadCloud size={18} />}
+                                    {subiendoExcel ? "Procesando..." : "Importar Ahora"}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL INDIVIDUAL */}
             {modalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
                     <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg p-6 animate-in fade-in zoom-in duration-200">
                         <div className="flex justify-between items-center mb-6">
-                            <h3 className="text-xl font-bold text-gray-800">
-                                {editingId ? 'Editar Trabajador' : 'Nuevo Trabajador'}
-                            </h3>
+                            <h3 className="text-xl font-bold text-gray-800">{editingId ? 'Editar' : 'Nuevo'} Trabajador</h3>
                             <button onClick={() => setModalOpen(false)}><X className="text-gray-400 hover:text-gray-600" /></button>
                         </div>
-
                         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                             <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-700 mb-1">DNI</label>
-                                    <input {...register("dni", { required: true, maxLength: 8 })} className="w-full border rounded px-3 py-2" placeholder="8 dígitos" />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-700 mb-1">Género</label>
-                                    <select {...register("genero")} className="w-full border rounded px-3 py-2">
-                                        <option value="M">Masculino</option>
-                                        <option value="F">Femenino</option>
-                                    </select>
-                                </div>
+                                <div><label className="text-xs font-bold text-gray-700">DNI</label><input {...register("dni", { required: true })} className="w-full border rounded px-3 py-2" /></div>
+                                <div><label className="text-xs font-bold text-gray-700">Género</label><select {...register("genero")} className="w-full border rounded px-3 py-2"><option value="M">Masculino</option><option value="F">Femenino</option></select></div>
                             </div>
-
-                            {/* CORRECCIÓN: Inputs separados para Apellidos y Nombres */}
                             <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-700 mb-1">Apellidos</label>
-                                    <input {...register("apellidos", { required: true })} className="w-full border rounded px-3 py-2" placeholder="Ej: Perez Lopez" />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-700 mb-1">Nombres</label>
-                                    <input {...register("nombres", { required: true })} className="w-full border rounded px-3 py-2" placeholder="Ej: Juan Carlos" />
-                                </div>
+                                <div><label className="text-xs font-bold text-gray-700">Apellidos</label><input {...register("apellidos", { required: true })} className="w-full border rounded px-3 py-2" /></div>
+                                <div><label className="text-xs font-bold text-gray-700">Nombres</label><input {...register("nombres", { required: true })} className="w-full border rounded px-3 py-2" /></div>
                             </div>
-
                             <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-700 mb-1">Cargo</label>
-                                    <input {...register("cargo")} className="w-full border rounded px-3 py-2" />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-700 mb-1">Área</label>
-                                    <input {...register("area")} className="w-full border rounded px-3 py-2" />
-                                </div>
+                                <div><label className="text-xs font-bold text-gray-700">Cargo</label><input {...register("cargo")} className="w-full border rounded px-3 py-2" /></div>
+                                <div><label className="text-xs font-bold text-gray-700">Área</label><input {...register("area")} className="w-full border rounded px-3 py-2" /></div>
                             </div>
 
+                            {/* Input Firma Individual */}
                             <div className="bg-gray-50 p-3 rounded border border-gray-200">
-                                <label className="block text-xs font-bold text-gray-700 mb-2">Firma Digital (Imagen)</label>
+                                <label className="block text-xs font-bold text-gray-700 mb-2">Firma Digital</label>
                                 <div className="flex items-center gap-3">
                                     <input type="hidden" {...register("firma_url")} />
                                     <input type="file" id="firma-upload" className="hidden" accept="image/*" onChange={handleUploadFirma} />
-
                                     {watch('firma_url') ? (
                                         <div className="flex items-center gap-2 text-green-600 text-sm font-bold">
-                                            <CheckCircle2 size={18} /> Firma cargada
+                                            <CheckCircle2 size={18} /> Cargada
                                             <button type="button" onClick={() => setValue('firma_url', '')} className="text-red-500 ml-2"><Trash2 size={14} /></button>
                                         </div>
                                     ) : (
                                         <label htmlFor="firma-upload" className="cursor-pointer flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded hover:bg-gray-50 text-sm">
                                             {uploadingFirma ? <Loader2 className="animate-spin" size={16} /> : <UploadCloud size={16} />}
-                                            {uploadingFirma ? "Subiendo..." : "Adjuntar Imagen"}
+                                            {uploadingFirma ? "Subiendo..." : "Adjuntar"}
                                         </label>
                                     )}
                                 </div>
@@ -376,9 +404,7 @@ export default function TrabajadoresPage() {
 
                             <div className="pt-4 flex justify-end gap-3">
                                 <button type="button" onClick={() => setModalOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancelar</button>
-                                <button type="submit" className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-bold flex items-center gap-2">
-                                    <Save size={18} /> Guardar
-                                </button>
+                                <button type="submit" className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-bold flex items-center gap-2"><Save size={18} /> Guardar</button>
                             </div>
                         </form>
                     </div>

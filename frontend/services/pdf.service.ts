@@ -1,6 +1,6 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import api from "./api"; // <--- IMPORTANTE: Asegúrate de importar la API
+import api from "./api";
 
 // --- INTERFACES ---
 interface EmpresaConfig {
@@ -59,7 +59,8 @@ const getBase64FromUrl = async (url: string): Promise<string | null> => {
   if (!url) return null;
   if (url.startsWith("data:")) return url;
 
-  // AJUSTA ESTE PUERTO SI TU BACKEND ES DISTINTO
+  // Si la URL comienza con http (ej: window.location.origin), la usa tal cual.
+  // Si no, asume que es del backend y le pega el localhost:4000.
   const fullUrl = url.startsWith("http") ? url : `http://localhost:4000${url}`;
 
   try {
@@ -97,19 +98,28 @@ const formatTime = (timeStr: string) => {
 const generarPortada = (
   doc: jsPDF,
   data: CapacitacionPDF,
-  empresa: EmpresaConfig
+  empresa: EmpresaConfig,
+  logoBase64: string | null // 🟢 Recibe el logo aquí
 ) => {
   const pageWidth = doc.internal.pageSize.width;
   const marginX = 25;
   let currentY = 20;
 
-  doc.setFillColor(240, 240, 240);
-  doc.rect(pageWidth - marginX - 40, currentY, 40, 25, "F");
-  doc.setFontSize(8);
-  doc.setTextColor(100);
-  doc.text("LOGO", pageWidth - marginX - 20, currentY + 12, {
-    align: "center",
-  });
+  // 🟢 LOGICA DEL LOGO PÁGINA 1
+  if (logoBase64) {
+    // Dibujar Logo (ajusta ancho/alto según tu imagen)
+    doc.addImage(logoBase64, "PNG", pageWidth - marginX - 40, currentY, 40, 20);
+  } else {
+    // Placeholder si no carga
+    doc.setFillColor(240, 240, 240);
+    doc.rect(pageWidth - marginX - 40, currentY, 40, 25, "F");
+    doc.setFontSize(8);
+    doc.setTextColor(100);
+    doc.text("LOGO", pageWidth - marginX - 20, currentY + 12, {
+      align: "center",
+    });
+  }
+
   currentY += 40;
 
   doc.setTextColor(0);
@@ -209,28 +219,35 @@ export const generarPDFUniversal = async (
 ) => {
   const doc = new jsPDF();
 
-  // --- 1. OBTENER TOTAL DE TRABAJADORES (MAESTRO) ---
+  // --- 1. CARGAR LOGO PRINCIPAL ---
+  // Usamos window.location.origin para asegurar que busque en el Frontend (puerto 3000)
+  // Asegúrate de que logo.png esté en la carpeta /public
+  let logoBase64: string | null = null;
+  try {
+    const logoUrl = `${window.location.origin}/logo.png`;
+    logoBase64 = await getBase64FromUrl(logoUrl);
+  } catch (e) {
+    console.error("No se pudo cargar el logo", e);
+  }
+
+  // --- 2. OBTENER TOTAL DE TRABAJADORES (MAESTRO) ---
   let totalPoblacion = 0;
   try {
-    // Consultamos la tabla maestra para obtener el total real (ej: 68)
     const res = await api.get("/trabajadores");
     const datos = res.data;
 
     if (Array.isArray(datos)) {
-      // Si devuelve un array directo
       totalPoblacion = datos.length;
     } else if (datos && datos.data && Array.isArray(datos.data)) {
-      // Si devuelve paginado { data: [...], total: 68 }
       totalPoblacion = datos.total || datos.data.length;
     } else if (datos && datos.total) {
-      // Si devuelve objeto { total: 68 }
       totalPoblacion = datos.total;
     }
   } catch (error) {
     console.error("Error obteniendo total trabajadores:", error);
   }
 
-  // --- 2. CARGA PREVIA DE IMÁGENES ---
+  // --- 3. CARGA PREVIA DE IMÁGENES (FIRMAS) ---
   const participantesConFirma = await Promise.all(
     data.participantes.map(async (p) => {
       let firmaBase64 = null;
@@ -246,24 +263,30 @@ export const generarPDFUniversal = async (
     expositorFirmaBase64 = await getBase64FromUrl(data.expositor_firma);
   }
 
-  // 3. GENERAR PORTADA
-  generarPortada(doc, data, empresa);
+  // 4. GENERAR PORTADA (Pasa el logoBase64)
+  generarPortada(doc, data, empresa, logoBase64);
 
-  // 4. PÁGINA 2 (ACTA)
+  // 5. PÁGINA 2 (ACTA)
   const marginLeft = 10;
   const marginTop = 10;
   const pageWidth = doc.internal.pageSize.width;
   const contentWidth = pageWidth - marginLeft * 2;
   let currentY = marginTop;
 
-  // --- A. CABECERA ---
+  // --- A. CABECERA PAGINA 2 ---
   const colLeftWidth = 60;
   doc.setDrawColor(0);
   doc.setTextColor(0);
 
-  doc.rect(marginLeft, currentY, 20, 15);
-  doc.setFontSize(6);
-  doc.text("LOGO", marginLeft + 5, currentY + 8);
+  // 🟢 LOGO EN PAGINA 2
+  if (logoBase64) {
+    // Ajusta dimensiones (x, y, ancho, alto)
+    doc.addImage(logoBase64, "PNG", marginLeft, currentY, 25, 12);
+  } else {
+    doc.rect(marginLeft, currentY, 20, 15);
+    doc.setFontSize(6);
+    doc.text("LOGO", marginLeft + 5, currentY + 8);
+  }
 
   doc.setFontSize(7);
   doc.setFont("helvetica", "bold");
@@ -327,15 +350,11 @@ export const generarPDFUniversal = async (
   // CUADRO DE POBLACIÓN TOTAL
   doc.rect(colRightX + 28, rightY - 2, 18, 8);
 
-  // --- CORRECCIÓN: Usar totalPoblacion (de la API) en lugar de data.total_trabajadores (H+M) ---
   if (totalPoblacion > 0) {
     doc.setFontSize(9);
     doc.text(String(totalPoblacion), colRightX + 37, rightY + 3, {
       align: "center",
     });
-  } else {
-    // Si falla la API, lo dejamos en blanco para llenar a mano,
-    // pero NO ponemos data.total_trabajadores porque eso es la suma de asistentes.
   }
 
   rightY += 12;

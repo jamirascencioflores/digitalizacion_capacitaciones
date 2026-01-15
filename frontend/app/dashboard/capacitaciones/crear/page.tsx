@@ -1,3 +1,4 @@
+// frontend/app/dashboard/capacitaciones/crear/page.tsx
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
@@ -29,6 +30,7 @@ interface PlanItem {
     clasificacion: string;
     areas_objetivo?: string;
     objetivo?: string;
+    categoria?: string;
 }
 
 interface EmpresaConfig {
@@ -48,6 +50,7 @@ interface TrabajadorSelect {
     area: string;
     cargo: string;
     genero: string;
+    categoria?: string;
     firma_url?: string;
 }
 
@@ -133,7 +136,7 @@ export default function CrearCapacitacionPage() {
         }
     });
 
-    const { fields, append, remove } = useFieldArray({ control, name: "participantes" });
+    const { fields, append, remove, replace } = useFieldArray({ control, name: "participantes" });
     const participantesWatch = watch('participantes');
 
     // --- CARGA INICIAL ---
@@ -203,7 +206,9 @@ export default function CrearCapacitacionPage() {
     };
 
     const seleccionarTema = (plan: PlanItem) => {
+        // 1. Asignar Nombre y Actividad
         setValue('tema_principal', (plan.tema || '').trim());
+
         const tipoActividad = (plan.clasificacion || '').toLowerCase();
         let actividadFinal = 'Capacitación';
         if (tipoActividad.includes('inducci')) actividadFinal = 'Inducción';
@@ -212,21 +217,36 @@ export default function CrearCapacitacionPage() {
         else if (tipoActividad.includes('simulacro')) actividadFinal = 'Simulacro';
         setValue('actividad', actividadFinal);
 
-        const textoBusqueda = plan.tema.toLowerCase();
+        // 3. 🟢 ASIGNAR CATEGORÍA (Desde la columna 'categoria' del Excel/BD)
         let categoriaFinal = 'Otros';
-        if (textoBusqueda.includes('social') || textoBusqueda.includes('laboral') || textoBusqueda.includes('humanos')) {
-            categoriaFinal = 'Responsabilidad Social';
-        } else if (textoBusqueda.includes('bpa') || textoBusqueda.includes('agrícolas') || textoBusqueda.includes('inocuidad')) {
-            categoriaFinal = 'Inocuidad';
-        } else if (textoBusqueda.includes('seguridad') || textoBusqueda.includes('sst') || textoBusqueda.includes('emergencia')) {
-            categoriaFinal = 'Seguridad';
-        } else if (textoBusqueda.includes('ambiente') || textoBusqueda.includes('residuos') || textoBusqueda.includes('agua')) {
-            categoriaFinal = 'Medio Ambiente';
-        } else if (textoBusqueda.includes('cadena') || textoBusqueda.includes('basc')) {
-            categoriaFinal = 'Cadena';
+
+        // Usamos plan.categoria en vez de plan.eje
+        if (plan.categoria) {
+            const catNormalizada = normalizar(plan.categoria);
+
+            if (catNormalizada.includes('social')) {
+                categoriaFinal = 'Responsabilidad Social';
+            } else if (catNormalizada.includes('ambiente')) {
+                categoriaFinal = 'Medio Ambiente';
+            } else if (catNormalizada.includes('inocuidad')) {
+                categoriaFinal = 'Inocuidad';
+            } else if (catNormalizada.includes('seguridad') || catNormalizada.includes('sst')) {
+                categoriaFinal = 'Seguridad';
+            } else if (catNormalizada.includes('cadena')) {
+                categoriaFinal = 'Cadena';
+            } else if (catNormalizada.includes('gobernanza')) {
+                categoriaFinal = 'Gobernanza'; // Asegúrate de tener esta opción en tu <select>
+            }
         }
+
         setValue('categoria', categoriaFinal);
+
+        // 4. Asignar Áreas y Objetivo
         if (plan.areas_objetivo) setValue('area_objetivo', plan.areas_objetivo);
+        else setValue('area_objetivo', '');
+
+        if (plan.objetivo) setValue('objetivo', plan.objetivo);
+
         setValue('modalidad', 'Interna');
         setMostrarSugerencias(false);
     };
@@ -274,9 +294,16 @@ export default function CrearCapacitacionPage() {
         const cargosUnicos = Array.from(new Set(baseParaCargos.map(t => t.cargo).filter(Boolean))).sort();
         const cargosDisponibles = cargosUnicos.map(c => ({ value: c, label: c }));
 
-        const opcionesNombres = trabajadoresFiltrados.map(t => ({ value: t.dni, label: `${t.apellidos} ${t.nombres}`, datos: t }));
-        const opcionesDNI = trabajadoresFiltrados.map(t => ({ value: t.dni, label: t.dni, datos: t }));
-
+        const opcionesNombres = trabajadoresFiltrados.map(t => ({
+            value: String(t.dni).padStart(8, '0'), // 🟢 Forzamos 8 dígitos
+            label: `${t.apellidos} ${t.nombres}`,
+            datos: t
+        }));
+        const opcionesDNI = trabajadoresFiltrados.map(t => ({
+            value: String(t.dni).padStart(8, '0'), // 🟢 Forzamos 8 dígitos
+            label: String(t.dni).padStart(8, '0'),
+            datos: t
+        }));
         return { opcionesNombres, opcionesDNI, cargosDisponibles, areasDisponibles };
     };
 
@@ -399,6 +426,82 @@ export default function CrearCapacitacionPage() {
         menu: (base: Record<string, unknown>) => ({ ...base, zIndex: 9999 })
     };
 
+    const cargarTrabajadoresDeArea = () => {
+        const areaObjetivo = watch('area_objetivo');
+        if (!areaObjetivo) {
+            alert("Primero selecciona un tema para saber a qué áreas cargar.");
+            return;
+        }
+
+        const areasBusqueda = areaObjetivo.split(',').map(a => normalizar(a.trim()));
+
+        // 🟢 DICCIONARIO DE SINÓNIMOS (Para cruzar datos del Excel con el JSON de trabajadores)
+        const diccionario: Record<string, string[]> = {
+            "rrhh": ["recursos humanos", "personal", "rrhh", "social"],
+            "sig": ["sig", "sistema de gestion", "integrado", "calidad", "sso"],
+            "logistica": ["logistica", "almacen", "compras", "adquisiciones"],
+            "planificacion": ["planificacion", "planeamiento", "control"],
+            "mantenimiento": ["mecanizacion", "taller", "mantenimiento", "maquinaria"],
+            "mecanizacion": ["mecanizacion", "taller", "mantenimiento"],
+            "cifhs": ["cifhs", "hostigamiento", "comite", "genero"],
+            "eds": ["eds", "desempeño social"],
+            "scsst": ["scsst", "comite", "seguridad y salud", "csst"]
+        };
+
+        const sugeridos = listaTrabajadores.filter(t => {
+            const areaT = normalizar(t.area);
+            const catT = normalizar(t.categoria || "");
+            return areasBusqueda.some(aPlan => {
+                // Si el área del Excel tiene sinónimos definidos
+                if (diccionario[aPlan]) {
+                    return diccionario[aPlan].some(sinonimo =>
+                        areaT.includes(sinonimo) || catT.includes(sinonimo)
+                    );
+                }
+                // Búsqueda normal si no está en el diccionario
+                return areaT.includes(aPlan) || catT.includes(aPlan);
+            });
+        });
+
+        if (sugeridos.length === 0) {
+            alert("No se encontraron trabajadores para: " + areaObjetivo);
+            return;
+        }
+
+        // 🟢 LÓGICA DE REEMPLAZO O AGREGADO
+        const hayDatosPrevios = fields.length > 0 && (fields.length > 1 || participantesWatch[0].dni !== "");
+
+        let debeReemplazar = false;
+
+        if (hayDatosPrevios) {
+            // Si ya hay gente, preguntamos qué hacer
+            if (confirm(`Ya hay personas en la lista.\n\n[ACEPTAR] = Reemplazar por los ${sugeridos.length} nuevos.\n[CANCELAR] = Agregar al final.`)) {
+                debeReemplazar = true;
+            }
+        } else {
+            // Si está vacía, solo pedimos confirmación simple
+            if (!confirm(`Se detectaron ${sugeridos.length} trabajadores. ¿Cargar ahora?`)) return;
+            debeReemplazar = true; // Reemplazamos la fila vacía inicial
+        }
+
+        const nuevasFilas = sugeridos.map((t, i) => ({
+            numero: debeReemplazar ? i + 1 : fields.length + i + 1,
+            dni: String(t.dni).padStart(8, '0'),
+            apellidos_nombres: `${t.apellidos} ${t.nombres}`,
+            area: t.area,
+            cargo: t.cargo,
+            genero: t.genero || 'M',
+            condicion: '',
+            firma_url: t.firma_url || ''
+        }));
+
+        if (debeReemplazar) {
+            replace(nuevasFilas); // Borra todo y pone lo nuevo
+        } else {
+            append(nuevasFilas); // Agrega al final
+        }
+    };
+
     return (
         <div className="max-w-6xl mx-auto space-y-6 pb-20 relative">
             {/* MODAL FIRMA */}
@@ -488,8 +591,34 @@ export default function CrearCapacitacionPage() {
                             {mostrarSugerencias && sugerencias.length > 0 && (
                                 <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-60 overflow-y-auto">
                                     <ul>{sugerencias.map((plan, index) => (
-                                        <li key={index} onClick={() => seleccionarTema(plan)} className="px-4 py-3 hover:bg-green-50 cursor-pointer border-b last:border-none">
-                                            <p className="text-sm font-bold text-gray-800">{plan.tema}</p>
+                                        <li
+                                            key={index}
+                                            onClick={() => seleccionarTema(plan)}
+                                            className="px-4 py-3 hover:bg-blue-50 cursor-pointer border-b last:border-none transition-colors group"
+                                        >
+                                            {/* 1. Título del Tema (Arriba) */}
+                                            <div className="text-sm font-bold text-gray-800 mb-1 group-hover:text-blue-700 transition-colors">
+                                                {plan.tema}
+                                            </div>
+
+                                            {/* 2. Clasificación (Texto pequeño gris) */}
+                                            <div className="text-xs text-gray-400 mb-2">
+                                                {plan.clasificacion}
+                                            </div>
+
+                                            {/* 3. Etiquetas de Área (Abajo, separadas en 'chips') */}
+                                            {plan.areas_objetivo && (
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {plan.areas_objetivo.split(',').map((area, i) => (
+                                                        <span
+                                                            key={i}
+                                                            className="text-[10px] uppercase font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded border border-blue-200"
+                                                        >
+                                                            {area.trim()}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </li>
                                     ))}</ul>
                                 </div>
@@ -526,6 +655,7 @@ export default function CrearCapacitacionPage() {
                                 <option value="Cadena">Cadena Suministro</option>
                                 <option value="Medio Ambiente">Medio Ambiente</option>
                                 <option value="Responsabilidad Social">Resp. Social</option>
+                                <option value="Gobernanza">Gobernanza</option>
                                 <option value="Otros">Otros</option>
                             </select>
                         </div>
@@ -573,7 +703,37 @@ export default function CrearCapacitacionPage() {
 
                 {/* 5. TABLA INTELIGENTE (PARTICIPANTES) */}
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                    <div className="flex justify-between mb-4 border-b pb-2"><h3 className="font-bold">Lista de Asistencia ({fields.length})</h3></div>
+                    <div className="flex gap-2 mb-6">
+                        {/* 🟢 BOTÓN AUTOCOMPLETAR */}
+                        {watch('area_objetivo') && (
+                            <button
+                                type="button"
+                                onClick={cargarTrabajadoresDeArea}
+                                className="flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 text-xs font-bold shadow-sm transition-all"
+                                title={`Cargar personal de: ${watch('area_objetivo')}`}
+                            >
+                                <UserCheck size={16} />
+                                <span className="hidden sm:inline">Autocompletar ({watch('area_objetivo')})</span>
+                            </button>
+                        )}
+
+                        {/* 🔴 BOTÓN LIMPIAR (Nuevo) */}
+                        {fields.length > 0 && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (confirm("¿Estás seguro de vaciar toda la lista?")) {
+                                        replace([{ numero: 1, dni: '', apellidos_nombres: '', area: '', cargo: '', genero: 'M', condicion: '' }]); // Reinicia a 1 fila vacía
+                                    }
+                                }}
+                                className="flex items-center gap-2 px-3 py-1.5 bg-red-100 text-red-600 border border-red-200 rounded-lg hover:bg-red-200 text-xs font-bold transition-all"
+                                title="Borrar toda la lista"
+                            >
+                                <Trash2 size={16} />
+                                <span className="hidden sm:inline">Limpiar</span>
+                            </button>
+                        )}
+                    </div>
                     <div className="hidden md:grid grid-cols-12 gap-2 text-xs font-bold text-gray-500 mb-2 uppercase px-2">
                         <div className="col-span-1 text-center">#</div>
                         <div className="col-span-2">DNI</div>

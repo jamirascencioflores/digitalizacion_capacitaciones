@@ -266,7 +266,7 @@ const subirPlanAnual = async (req, res) => {
   }
 };
 
-// --- 2. OBTENER AVANCE (Lógica Unificada por Tema) ---
+// --- 2. OBTENER AVANCE (SOPORTE PARA ÁREAS + CATEGORÍAS EDS/CIFHS) ---
 const obtenerAvance = async (req, res) => {
   try {
     // 1. Obtener datos base
@@ -296,16 +296,13 @@ const obtenerAvance = async (req, res) => {
 
       const entry = temasUnificados[temaNorm];
 
-      // Acumular meses
       if (plan.mes_programado) entry.mesesSet.add(plan.mes_programado);
 
-      // Acumular objetivos (limpiando prefijo)
       const objLimpio = plan.objetivo
         ? plan.objetivo.replace("Original: ", "")
         : "";
       if (objLimpio) entry.objetivosSet.add(objLimpio);
 
-      // Acumular áreas
       if (plan.areas_objetivo) {
         plan.areas_objetivo.split(",").forEach((a) => {
           const areaLimpia = a.trim();
@@ -332,35 +329,161 @@ const obtenerAvance = async (req, res) => {
         });
       });
 
-      // C. Meta (Trabajadores de las áreas acumuladas)
+      // C. Meta (Trabajadores filtrados por Área O Categoría)
       const areasLista = Array.from(datosTema.areasSet);
 
-      // Usamos normalizar() para comparar áreas de forma segura
       const trabajadoresObjetivo = trabajadores.filter((t) => {
-        const areaT = normalizar(t.area);
-        return areasLista.some((areaPlan) =>
-          areaT.includes(normalizar(areaPlan))
-        );
+        const areaT = normalizar(t.area); // Área del trabajador
+        // 🟢 NUEVO: También normalizamos la categoría (si es nula, string vacío)
+        const catT = normalizar(t.categoria || "");
+
+        return areasLista.some((areaPlanRaw) => {
+          const areaPlan = normalizar(areaPlanRaw); // Lo que dice el Excel (ej: "CIFHS")
+
+          // 🟢 DICCIONARIO ACTUALIZADO (Con Mantenimiento fusionado)
+          const diccionario = {
+            // --- CATEGORÍAS ESPECIALES ---
+            cifhs: [
+              "cifhs",
+              "hostigamiento",
+              "comite de intervencion",
+              "genero",
+            ],
+            eds: ["eds", "desempeño social", "equipo de desempeño"],
+            scsst: ["scsst", "comite de seguridad", "csst"],
+
+            // --- ÁREAS ---
+            rrhh: [
+              "recursos humanos",
+              "personal",
+              "rrhh",
+              "humanos",
+              "social",
+              "trabajadora social",
+              "bienestar",
+            ],
+            sig: [
+              "sig",
+              "sistema de gestion",
+              "integrado",
+              "calidad",
+              "sso",
+              "seguridad y salud",
+            ],
+            logistica: [
+              "logistica",
+              "almacen",
+              "compras",
+              "adquisiciones",
+              "suministros",
+            ],
+            planificacion: [
+              "planificacion",
+              "planeamiento",
+              "control",
+              "proyectos",
+            ],
+            sanidad: ["sanidad", "evaluadores", "plagas"],
+            agricola: [
+              "agricola",
+              "campo",
+              "riego",
+              "cosecha",
+              "cultivo",
+              "fitosanidad",
+            ],
+
+            // 🟢 AQUÍ ESTÁ LA FUSIÓN:
+            // Si el Excel dice "Mantenimiento" O "Mecanización", busca "taller" o "mecanizacion" en el trabajador
+            mecanizacion: [
+              "mecanizacion",
+              "maquinaria",
+              "taller",
+              "mantenimiento",
+            ],
+            mantenimiento: [
+              "mecanizacion",
+              "maquinaria",
+              "taller",
+              "mantenimiento",
+            ],
+
+            // Grupos
+            administrativos: [
+              "recursos humanos",
+              "personal",
+              "rrhh",
+              "humanos",
+              "social",
+              "sig",
+              "sistema de gestion",
+              "integrado",
+              "calidad",
+              "sso",
+              "logistica",
+              "almacen",
+              "compras",
+              "adquisiciones",
+              "suministros",
+              "planificacion",
+              "planeamiento",
+              "control",
+              "proyectos",
+              "administracion",
+              "administrativo",
+            ],
+            administracion: [
+              "recursos humanos",
+              "personal",
+              "rrhh",
+              "humanos",
+              "social",
+              "sig",
+              "sistema de gestion",
+              "integrado",
+              "calidad",
+              "sso",
+              "logistica",
+              "almacen",
+              "compras",
+              "adquisiciones",
+              "suministros",
+              "planificacion",
+              "planeamiento",
+              "control",
+              "proyectos",
+              "administracion",
+              "administrativo",
+            ],
+          };
+
+          // 1. Si existe en el diccionario
+          if (diccionario[areaPlan]) {
+            // 🟢 CAMBIO CLAVE: Verifica si coincide con el AREA O con la CATEGORIA
+            return diccionario[areaPlan].some(
+              (sinonimo) => areaT.includes(sinonimo) || catT.includes(sinonimo)
+            );
+          }
+
+          // 2. Búsqueda normal (texto exacto) en ambos campos
+          return areaT.includes(areaPlan) || catT.includes(areaPlan);
+        });
       });
 
       const metaTotal = trabajadoresObjetivo.length;
 
       // D. Real y Faltantes
-      // Filtramos quiénes de la meta SÍ asistieron
       const asistentesValidos = trabajadoresObjetivo.filter((t) =>
         dnisAsistentes.has(t.dni)
       );
 
-      // Los que NO están en la lista de asistencia
       const faltantes = trabajadoresObjetivo.filter(
         (t) => !dnisAsistentes.has(t.dni)
       );
 
       let avanceReal = asistentesValidos.length;
 
-      // E. Caso Externos
       if (metaTotal === 0 && dnisAsistentes.size > 0) {
-        // Si es externo y hubo asistencia, tomamos el total de asistentes como avance
         avanceReal = dnisAsistentes.size;
       }
 
@@ -385,11 +508,12 @@ const obtenerAvance = async (req, res) => {
           apellidos: f.apellidos,
           nombres: f.nombres,
           cargo: f.cargo,
+          // 🟢 Opcional: Devolver categoría para que veas si filtró bien en el frontend
+          categoria: f.categoria,
         })),
       };
     });
 
-    // Ordenar por porcentaje
     reporte.sort((a, b) => a.porcentaje - b.porcentaje);
 
     res.json(reporte);
@@ -405,6 +529,9 @@ const obtenerListaTemas = async (req, res) => {
       select: {
         tema: true,
         clasificacion: true,
+        areas_objetivo: true, // 
+        objetivo: true, //
+        categoria : true, // 
       },
       distinct: ["tema"],
     });
