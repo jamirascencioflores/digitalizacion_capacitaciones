@@ -2,14 +2,14 @@
 
 const prisma = require("../utils/db");
 const path = require("path");
-const XLSX = require("xlsx"); // Asegúrate de tener: npm install xlsx
+const XLSX = require("xlsx");
 const fs = require("fs");
-const { parsearExcelNisira } = require("../utils/nisiraParser");
+// 🟢 1. IMPORTAMOS LA UTILIDAD DE CLOUDINARY
+const { uploadImage } = require("../utils/cloudinary");
 
 // 1. LISTAR TODOS
 const obtenerTrabajadores = async (req, res) => {
   try {
-    // CORRECCIÓN: Ordenamos por apellidos y luego nombres, ya que el campo unificado no existe
     const trabajadores = await prisma.trabajadores.findMany({
       orderBy: [{ apellidos: "asc" }, { nombres: "asc" }],
     });
@@ -57,20 +57,28 @@ const buscarPorDNI = async (req, res) => {
   }
 };
 
-// 3. GUARDAR (CREAR O ACTUALIZAR)
+// 🟢 3. GUARDAR (CREAR O ACTUALIZAR) - CON CLOUDINARY
 const guardarTrabajador = async (req, res) => {
   try {
-    // CORRECCIÓN IMPORTANTE:
-    // Debes recibir 'nombres' y 'apellidos' por separado desde el Frontend.
-    // Si tu frontend envía 'apellidos_nombres', tendrás que separarlo aquí manualmente.
     const { dni, nombres, apellidos, area, cargo, genero, firma_url } =
       req.body;
 
-    // Validación simple para evitar guardar nulos si el frontend falla
     if (!nombres || !apellidos) {
       return res
         .status(400)
         .json({ error: "Se requieren nombres y apellidos por separado." });
+    }
+
+    // Lógica de Imagen:
+    // Si viene un archivo (req.file), lo subimos y usamos esa URL.
+    // Si no viene archivo, usamos el firma_url que venga en el body (o null).
+    let urlFinal = firma_url;
+
+    if (req.file) {
+      console.log("📤 Subiendo firma a Cloudinary...");
+      const result = await uploadImage(req.file.buffer, "firmas_trabajadores");
+      urlFinal = result.secure_url;
+      console.log("✅ Firma subida:", urlFinal);
     }
 
     const trabajador = await prisma.trabajadores.upsert({
@@ -81,7 +89,7 @@ const guardarTrabajador = async (req, res) => {
         area,
         cargo,
         genero,
-        firma_url,
+        firma_url: urlFinal, // Usamos la URL (nueva o existente)
       },
       create: {
         dni,
@@ -90,7 +98,7 @@ const guardarTrabajador = async (req, res) => {
         area,
         cargo,
         genero,
-        firma_url,
+        firma_url: urlFinal,
       },
     });
 
@@ -101,7 +109,7 @@ const guardarTrabajador = async (req, res) => {
   }
 };
 
-// 4. ELIMINAR (Sin cambios, esto estaba bien)
+// 4. ELIMINAR
 const eliminarTrabajador = async (req, res) => {
   try {
     const { id } = req.params;
@@ -116,10 +124,12 @@ const eliminarTrabajador = async (req, res) => {
   }
 };
 
-// 5. CARGA MASIVA DE FIRMAS (Prácticamente igual, solo verifica que use el modelo correcto)
+// 5. CARGA MASIVA DE FIRMAS
+// NOTA: Esta función requiere un ajuste mayor si usas Cloudinary para muchas fotos.
+// Por ahora la dejamos funcional para memoria, pero subirá las fotos una por una.
 const cargaMasivaFirmas = async (req, res) => {
   try {
-    const archivos = req.files;
+    const archivos = req.files; // Ahora son buffers en memoria
 
     if (!archivos || archivos.length === 0) {
       return res.status(400).json({ error: "No se enviaron archivos." });
@@ -134,9 +144,12 @@ const cargaMasivaFirmas = async (req, res) => {
         const dniExtraido = path.parse(nombreOriginal).name;
 
         if (/^\d{8}$/.test(dniExtraido)) {
-          const urlPublica = `${req.protocol}://${req.get("host")}/uploads/${
-            archivo.filename
-          }`;
+          // Subir a Cloudinary
+          const result = await uploadImage(
+            archivo.buffer,
+            "firmas_trabajadores",
+          );
+          const urlPublica = result.secure_url;
 
           const resultado = await prisma.trabajadores.updateMany({
             where: { dni: dniExtraido },
@@ -152,6 +165,7 @@ const cargaMasivaFirmas = async (req, res) => {
           errores++;
         }
       } catch (err) {
+        console.error(err);
         errores++;
       }
     }
@@ -168,114 +182,95 @@ const cargaMasivaFirmas = async (req, res) => {
   }
 };
 
-// 🟢 6. IMPORTAR EXCEL INTELIGENTE (NUEVO)
+// 🟢 6. IMPORTAR EXCEL INTELIGENTE (MEJORADO PARA PATERNO + MATERNO)
 const importarExcelInteligente = async (req, res) => {
   try {
     if (!req.file)
       return res.status(400).json({ error: "Sube un archivo Excel (.xlsx)" });
 
-    const filePath = req.file.path;
-    const workbook = XLSX.readFile(filePath);
+    // Leemos el buffer
+    const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
     const sheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
-
-    // Convertimos a JSON crudo (array de arrays)
     const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-
-    // Borramos el archivo temporal
-    fs.unlinkSync(filePath);
 
     if (rawData.length < 2)
       return res.status(400).json({ error: "El Excel está vacío" });
 
-    // FILA 0: CABECERAS (Detectamos sinónimos)
+    // FILA 0: CABECERAS
     const headers = rawData[0].map((h) =>
       String(h)
         .toLowerCase()
         .trim()
         .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[\u0300-\u036f]/g, ""),
     );
 
-    // Función para buscar índice de columna por palabras clave
     const findCol = (keywords) =>
       headers.findIndex((h) => keywords.some((k) => h.includes(k)));
 
-    // DICCIONARIO DE SINÓNIMOS
-    const idxDNI = findCol([
-      "dni",
-      "documento",
-      "cedula",
-      "codigogeneral",
-      "idcodigo",
-    ]);
-    const idxNombres = findCol([
-      "nombres",
-      "nombre",
-      "colaborador",
-      "empleado",
-    ]); // Si viene junto, usaremos lógica de split
-    const idxApellidos = findCol(["apellidos", "apellido", "paterno"]);
-    const idxArea = findCol([
-      "area",
-      "unidad",
-      "departamento",
-      "seccion",
-      "centro costo",
-    ]);
-    const idxCargo = findCol(["cargo", "puesto", "ocupacion", "labor"]);
+    // --- DICCIONARIO DE COLUMNAS ---
+    const idxDNI = findCol(["dni", "documento", "cedula", "codigogeneral"]);
+    const idxNombres = findCol(["nombres", "nombre", "colaborador"]);
+
+    // 🔍 CAMBIO CLAVE: Buscamos 3 tipos de columnas de apellidos
+    const idxApellidosGeneral = findCol(["apellidos", "apellido"]); // Columna única "Apellidos"
+    const idxPaterno = findCol(["paterno"]); // Columna específica "Paterno"
+    const idxMaterno = findCol(["materno"]); // Columna específica "Materno"
+
+    const idxArea = findCol(["area", "unidad", "departamento", "seccion"]);
+    const idxCargo = findCol(["cargo", "puesto", "ocupacion"]);
     const idxGenero = findCol(["genero", "sexo"]);
+    const idxCategoria = findCol(["categoria", "grupo"]);
 
     if (idxDNI === -1)
-      return res
-        .status(400)
-        .json({ error: "No encontré columna DNI (o Código General)" });
+      return res.status(400).json({ error: "No encontré columna DNI" });
 
     let procesados = 0;
     let errores = 0;
 
-    // ITERAR FILAS (Desde la fila 1, ignorando cabecera)
     for (let i = 1; i < rawData.length; i++) {
       const row = rawData[i];
       if (!row || row.length === 0) continue;
 
       let dni = row[idxDNI];
-      // Limpieza DNI: solo números y ceros a la izquierda
       if (dni) dni = String(dni).replace(/\D/g, "").padStart(8, "0");
-
       if (!dni || dni.length < 8) {
         errores++;
         continue;
       }
 
-      // Lógica Nombres y Apellidos
       let nombres = "SIN NOMBRE";
       let apellidos = "SIN APELLIDO";
 
-      if (idxNombres !== -1 && idxApellidos !== -1) {
-        // Caso ideal: Columnas separadas
-        nombres = row[idxNombres] || nombres;
-        apellidos = row[idxApellidos] || apellidos;
-      } else if (idxNombres !== -1) {
-        // Caso difícil: Nombre completo en una sola celda (Ej: "PEREZ LOPEZ, JUAN")
-        const completo = String(row[idxNombres]).trim();
-        if (completo.includes(",")) {
-          // Formato: APELLIDOS, NOMBRES
-          const partes = completo.split(",");
-          apellidos = partes[0].trim();
-          nombres = partes[1].trim();
-        } else {
-          // Formato: NOMBRES APELLIDOS (Adivinanza simple)
-          const partes = completo.split(" ");
-          if (partes.length > 2) {
-            apellidos = partes.slice(-2).join(" "); // Últimos 2 son apellidos
-            nombres = partes.slice(0, -2).join(" ");
-          } else {
-            nombres = partes[0];
-            apellidos = partes.slice(1).join(" ");
+      // 1. OBTENER NOMBRES
+      if (idxNombres !== -1) nombres = row[idxNombres] || nombres;
+
+      // 2. LOGICA INTELIGENTE DE APELLIDOS (AQUÍ ESTÁ EL ARREGLO) 🧠
+      if (idxPaterno !== -1 && idxMaterno !== -1) {
+        // CASO A: Existen columnas separadas (Paterno y Materno) -> LAS UNIMOS
+        const p = String(row[idxPaterno] || "").trim();
+        const m = String(row[idxMaterno] || "").trim();
+        apellidos = `${p} ${m}`.trim();
+      } else if (idxApellidosGeneral !== -1) {
+        // CASO B: Existe una sola columna "Apellidos" -> USAMOS ESA
+        apellidos = String(row[idxApellidosGeneral] || "").trim();
+
+        // Si por casualidad la columna "Nombres" incluye los apellidos (formato: APELLIDOS, NOMBRES)
+        if (apellidos === "" && idxNombres !== -1) {
+          const completo = String(row[idxNombres]).trim();
+          if (completo.includes(",")) {
+            apellidos = completo.split(",")[0].trim();
+            nombres = completo.split(",")[1].trim();
           }
         }
+      } else if (idxPaterno !== -1) {
+        // CASO C: Solo existe Paterno
+        apellidos = String(row[idxPaterno] || "").trim();
       }
+
+      // Evitamos guardar "SIN APELLIDO" si logramos conseguir algo
+      if (!apellidos) apellidos = "SIN APELLIDO";
 
       const area =
         idxArea !== -1 ? String(row[idxArea] || "General").trim() : "General";
@@ -283,19 +278,19 @@ const importarExcelInteligente = async (req, res) => {
         idxCargo !== -1
           ? String(row[idxCargo] || "Trabajador").trim()
           : "Trabajador";
+      const categoria =
+        idxCategoria !== -1 ? String(row[idxCategoria] || "").trim() : null;
 
-      // Género (Intentar detectar M/F)
       let genero = "M";
       if (idxGenero !== -1) {
         const gRaw = String(row[idxGenero]).toUpperCase();
         if (gRaw.startsWith("F") || gRaw.includes("MUJER")) genero = "F";
       }
 
-      // GUARDAR O ACTUALIZAR (UPSERT)
       try {
         await prisma.trabajadores.upsert({
           where: { dni },
-          update: { nombres, apellidos, area, cargo, genero },
+          update: { nombres, apellidos, area, cargo, genero, categoria },
           create: {
             dni,
             nombres,
@@ -303,6 +298,7 @@ const importarExcelInteligente = async (req, res) => {
             area,
             cargo,
             genero,
+            categoria,
             estado: true,
           },
         });
@@ -319,13 +315,13 @@ const importarExcelInteligente = async (req, res) => {
   }
 };
 
-// 🟢 7. ELIMINAR FIRMA (NUEVO)
+// 7. ELIMINAR FIRMA
 const eliminarFirma = async (req, res) => {
   try {
     const { id } = req.params;
     await prisma.trabajadores.update({
       where: { id_trabajador: Number(id) },
-      data: { firma_url: null }, // Ponemos null para borrarla
+      data: { firma_url: null },
     });
     res.json({ mensaje: "Firma eliminada correctamente" });
   } catch (error) {
@@ -333,14 +329,18 @@ const eliminarFirma = async (req, res) => {
   }
 };
 
-// 🟢 NUEVA FUNCIÓN: Actualizar datos generales de un trabajador
+// 🟢 8. ACTUALIZAR TRABAJADOR (CON FIRMA)
 const actualizarTrabajador = async (req, res) => {
   try {
     const { id } = req.params;
-
-    // Extraemos el id_trabajador del body para NO intentar actualizar la llave primaria
-    // 'datos' contendrá: dni, nombres, apellidos, cargo, firma_url, etc.
     const { id_trabajador, ...datos } = req.body;
+
+    // Si viene nueva imagen, la subimos
+    if (req.file) {
+      console.log("📤 Actualizando firma en Cloudinary...");
+      const result = await uploadImage(req.file.buffer, "firmas_trabajadores");
+      datos.firma_url = result.secure_url;
+    }
 
     const trabajadorActualizado = await prisma.trabajadores.update({
       where: { id_trabajador: parseInt(id) },

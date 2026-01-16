@@ -3,14 +3,14 @@
   "version": "1.0.0",
   "main": "src/server.js",
   "scripts": {
-  "start": "npx prisma db push && node src/server.js",
-  "dev": "nodemon src/server.js",
-  "postinstall": "npx prisma generate"
-},
-
+    "start": "npx prisma db push && node src/server.js",
+    "dev": "nodemon src/server.js",
+    "postinstall": "npx prisma generate"
+  },
   "dependencies": {
     "@prisma/client": "^5.22.0",
     "bcryptjs": "^2.4.3",
+    "cloudinary": "^2.9.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "exceljs": "^4.4.0",
@@ -19,6 +19,7 @@
     "multer": "^2.0.2",
     "pdf-lib": "^1.17.1",
     "pdfmake": "^0.2.20",
+    "streamifier": "^0.1.1",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
