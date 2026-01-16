@@ -46,6 +46,8 @@ app.get("/", (req, res) => {
 });
 
 // 5. INICIAR SERVIDOR
+console.log("DATABASE_URL:", process.env.DATABASE_URL ? "OK" : "NO EXISTE");
+
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, "0.0.0.0", () => {
   console.log("----------------------");
