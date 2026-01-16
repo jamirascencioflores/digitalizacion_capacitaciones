@@ -9,7 +9,7 @@ const usuarioController = require("../controllers/usuario.controller");
 router.get("/", usuarioController.obtenerUsuarios);
 
 // 2. Crear nuevo (Admin)
-router.post("/", usuarioController.registrarUsuario);
+router.post("/login", usuarioController.registrarUsuario);
 
 // 3. Editar
 router.put("/:id", usuarioController.actualizarUsuario);
