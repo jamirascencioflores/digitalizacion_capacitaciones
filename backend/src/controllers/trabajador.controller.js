@@ -32,6 +32,7 @@ const getTrabajadoresSelect = async (req, res) => {
         cargo: true,
         genero: true,
         firma_url: true,
+        categoria: true,
       },
       orderBy: { apellidos: "asc" },
     });

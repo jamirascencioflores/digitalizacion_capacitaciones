@@ -15,6 +15,7 @@ const empresaRoutes = require("./routes/empresa.routes");
 const uploadRoutes = require("./routes/upload.routes");
 const gestionRoutes = require("./routes/gestion.routes");
 const usuarioRoutes = require("./routes/usuario.routes");
+const evaluacionRoutes = require("./routes/evaluacion.routes");
 
 const app = express();
 
@@ -38,6 +39,7 @@ app.use("/api/empresa", empresaRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/gestion", gestionRoutes);
 app.use("/api/usuarios", usuarioRoutes);
+app.use("/api/evaluaciones", evaluacionRoutes);
 // Ruta de prueba
 app.get("/", (req, res) => {
   res.send("API SST Funcionando 🚀");

@@ -18,6 +18,7 @@ import { useAuth } from '@/context/AuthContext';
 import SignatureCanvas from 'react-signature-canvas';
 import SignaturePad from '@/components/ui/SignaturePad';
 import { uploadImageToLocal, uploadBase64 } from '@/services/upload.service';
+import EvaluacionesTab from '@/components/EvaluacionesTab';
 
 // --- UTILIDADES ---
 const normalizar = (texto: string | undefined | null) => {
@@ -81,6 +82,14 @@ interface SelectOption {
     datos?: TrabajadorSelect;
 }
 
+// 🟢 INTERFAZ DE EVALUACIÓN (Para el estado)
+interface EvaluacionData {
+    id_evaluacion: number;
+    titulo: string;
+    tipo: string;
+    estado: boolean;
+}
+
 type Inputs = {
     codigo_acta: string;
     tema_principal: string;
@@ -127,12 +136,18 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
 
     const esAuditor = user?.rol === 'Auditor';
 
-    // ESTADOS
-    const [activeTab, setActiveTab] = useState<'asistentes' | 'faltantes'>('asistentes');
+    // 🟢 ESTADOS CORREGIDOS (Nombres distintos)
+    // 1. Pestaña Principal (Detalle vs Evaluaciones)
+    const [mainTab, setMainTab] = useState<'detalle' | 'evaluaciones'>('detalle');
+
+    // 2. Pestaña de Lista (Asistentes vs Faltantes) - SOLO DENTRO DE DETALLE
+    const [listTab, setListTab] = useState<'asistentes' | 'faltantes'>('asistentes');
+
     const [faltantes, setFaltantes] = useState<TrabajadorFaltante[]>([]);
     const [evidenciasNuevas, setEvidenciasNuevas] = useState<File[]>([]);
     const [fotosExistentes, setFotosExistentes] = useState<DocumentoExistente[]>([]);
     const [uploadingExpositor, setUploadingExpositor] = useState(false);
+    const [evaluaciones, setEvaluaciones] = useState<EvaluacionData[]>([]);
 
     // AUTOCOMPLETE TEMA
     const [planes, setPlanes] = useState<PlanItem[]>([]);
@@ -184,6 +199,7 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
                     participantes: data.participantes || [],
                     area_objetivo: data.area_objetivo || '' // 🟢 IMPORTANTE: Cargar el área objetivo
                 });
+                if (data.evaluaciones) setEvaluaciones(data.evaluaciones);
             } catch (error) {
                 console.error("Error cargando:", error);
                 router.push('/dashboard');
@@ -284,6 +300,7 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
         else if (tipoActividad.includes('taller')) actividadFinal = 'Taller';
         else if (tipoActividad.includes('charla')) actividadFinal = 'Charla';
         else if (tipoActividad.includes('simulacro')) actividadFinal = 'Simulacro';
+        else if (tipoActividad.includes('entrenamiento')) actividadFinal = 'Entrenamiento';
         setValue('actividad', actividadFinal);
 
         // 3. 🟢 ASIGNAR CATEGORÍA (Desde la columna 'categoria' del Excel/BD)
@@ -628,212 +645,240 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
                 </div>
             </div>
 
-            <form onSubmit={handleSubmit(onSubmit, onError)} className="space-y-6 mt-6">
-                <input type="hidden" {...register("area_objetivo")} />
+            {/* 🟢 TABS DE NAVEGACIÓN (MAIN TAB) */}
+            <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-lg w-fit">
+                <button
+                    onClick={() => setMainTab('detalle')}
+                    className={`px-4 py-2 rounded-md text-sm font-bold transition ${mainTab === 'detalle' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                    📝 Detalle y Asistencia
+                </button>
+                <button
+                    onClick={() => setMainTab('evaluaciones')}
+                    className={`px-4 py-2 rounded-md text-sm font-bold transition ${mainTab === 'evaluaciones' ? 'bg-white text-purple-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                    🧠 Evaluaciones
+                </button>
+            </div>
 
-                {/* 2. DATOS GENERALES */}
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                    <div className="flex items-center gap-2 mb-4 border-b pb-2 text-blue-700"><Building2 size={20} /><h3 className="font-bold">Datos Generales</h3></div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Sede Principal</label>
-                            <div className="flex gap-4">
-                                <label className={`flex items-center gap-2 border p-3 rounded-lg w-full ${esAuditor ? 'opacity-70' : 'cursor-pointer'} ${watch('sede_empresa') === 'Majes' ? 'bg-blue-50 border-blue-500' : ''}`}><input type="radio" disabled={esAuditor} value="Majes" {...register("sede_empresa")} className="accent-blue-600" /> <span className="font-bold text-sm">MAJES</span></label>
-                                <label className={`flex items-center gap-2 border p-3 rounded-lg w-full ${esAuditor ? 'opacity-70' : 'cursor-pointer'} ${watch('sede_empresa') === 'Olmos' ? 'bg-blue-50 border-blue-500' : ''}`}><input type="radio" disabled={esAuditor} value="Olmos" {...register("sede_empresa")} className="accent-blue-600" /> <span className="font-bold text-sm">OLMOS</span></label>
-                            </div>
-                        </div>
-                        <div><label className="block text-sm font-medium text-gray-700 mb-1">Código Acta</label><input disabled={esAuditor} {...register("codigo_acta", { required: true })} className={`w-full border rounded px-3 py-2 bg-gray-50 font-mono text-blue-900 ${errors.codigo_acta ? 'border-red-500' : ''}`} /></div>
-                    </div>
-                </div>
+            {/* 🟢 RENDERIZADO CONDICIONAL DE LA PÁGINA */}
+            {mainTab === 'evaluaciones' ? (
+                <EvaluacionesTab
+                    idCapacitacion={Number(id)}
+                    evaluacionesExistentes={evaluaciones}
+                    onRecargar={() => window.location.reload()}
+                />
+            ) : (
 
-                {/* 3. DETALLES */}
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                    <div className="flex items-center gap-2 mb-4 border-b pb-2 text-blue-700"><Clock size={20} /><h3 className="font-bold">Detalles de la Sesión</h3></div>
-                    <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-                        <div className="md:col-span-8 relative" ref={autocompleteRef}>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Tema Principal</label>
-                            <div className="relative">
-                                <input disabled={esAuditor} {...temaRegister} onChange={(e) => { temaRegister.onChange(e); handleTemaSearch(e.target.value); }} className="w-full border rounded pl-9 pr-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Buscar tema..." autoComplete="off" />
-                                <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
-                            </div>
-                            {mostrarSugerencias && sugerencias.length > 0 && (
-                                <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-60 overflow-y-auto">
-                                    <ul>
-                                        {sugerencias.map((plan, index) => (
-                                            <li key={index} onClick={() => seleccionarTema(plan)} className="px-4 py-3 hover:bg-blue-50 cursor-pointer border-b last:border-none transition-colors group">
-                                                <div className="text-sm font-bold text-gray-800 mb-1 group-hover:text-blue-700 transition-colors">{plan.tema}</div>
-                                                <div className="text-xs text-gray-400 mb-2">{plan.clasificacion}</div>
-                                                {plan.areas_objetivo && (
-                                                    <div className="flex flex-wrap gap-1.5">{plan.areas_objetivo.split(',').map((area, i) => (<span key={i} className="text-[10px] uppercase font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded border border-blue-200">{area.trim()}</span>))}</div>
-                                                )}
-                                            </li>
-                                        ))}
-                                    </ul>
-                                </div>
-                            )}
-                        </div>
-                        <div className="md:col-span-4"><label className="block text-sm font-medium text-gray-400 mb-1">Actividad Económica</label><div className="w-full border rounded px-3 py-2 bg-gray-100 text-gray-500 text-sm">{empresaConfig?.actividad_economica}</div></div>
-                        <div className="md:col-span-3"><label className="block text-sm font-medium mb-1">Fecha <span className="text-red-500">*</span></label><input type="date" disabled={esAuditor} {...register("fecha", { required: true })} className={`w-full border rounded px-3 py-2 ${errors.fecha ? 'border-red-500' : ''}`} /></div>
-                        <div className="md:col-span-3"><label className="block text-sm font-medium mb-1">Inicio <span className="text-red-500">*</span></label><input type="time" disabled={esAuditor} {...register("hora_inicio", { required: true })} className={`w-full border rounded px-3 py-2 ${errors.hora_inicio ? 'border-red-500' : ''}`} /></div>
-                        <div className="md:col-span-3"><label className="block text-sm font-medium mb-1">Término <span className="text-red-500">*</span></label><input type="time" disabled={esAuditor} {...register("hora_termino", { required: true })} className={`w-full border rounded px-3 py-2 ${errors.hora_termino ? 'border-red-500' : ''}`} /></div>
-                        <div className="md:col-span-3"><label className="block text-sm font-medium mb-1">Total Horas</label><input disabled={esAuditor} {...register("total_horas")} className="w-full border rounded px-3 py-2" /></div>
-                        <div className="md:col-span-12"><label className="block text-sm font-medium mb-1">Objetivo</label><textarea disabled={esAuditor} {...register("objetivo")} rows={2} className="w-full border rounded px-3 py-2" /></div>
-                        <div className="md:col-span-12"><label className="block text-sm font-medium mb-1">Temario</label><textarea disabled={esAuditor} {...register("temario")} rows={3} className="w-full border rounded px-3 py-2" /></div>
-                    </div>
-                </div>
+                /* --- FORMULARIO PRINCIPAL (DETALLE) --- */
+                <form onSubmit={handleSubmit(onSubmit, onError)} className="space-y-6 mt-6">
+                    <input type="hidden" {...register("area_objetivo")} />
 
-                {/* 4. CLASIFICACIÓN */}
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                    <div className="flex items-center gap-2 mb-4 border-b pb-2 text-blue-700"><FileText size={20} /><h3 className="font-bold">Clasificación</h3></div>
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 text-sm">
-                        <div>
-                            <label className="block font-bold text-gray-700 mb-2">Actividad</label>
-                            <div className="grid grid-cols-2 gap-2">{['Inducción', 'Capacitación', 'Taller', 'Charla', 'Simulacro', 'Otros'].map(op => (<label key={op} className="flex items-center gap-2"><input type="radio" disabled={esAuditor} value={op} {...register("actividad", { required: true })} /> {op}</label>))}</div>
-                            {errors.actividad && <span className="text-red-500 text-xs">Requerido</span>}
-                        </div>
-                        <div>
-                            <label className="block font-bold text-gray-700 mb-2">Categoría</label>
-                            <select disabled={esAuditor} {...register("categoria", { required: true })} className="w-full border rounded px-2 py-1.5"><option value="">-- Seleccionar --</option><option value="Seguridad">Seguridad</option><option value="Inocuidad">Inocuidad</option><option value="Cadena">Cadena Suministro</option><option value="Medio Ambiente">Medio Ambiente</option><option value="Responsabilidad Social">Resp. Social</option><option value="Gobernanza">Gobernanza</option><option value="Otros">Otros</option></select>
-                            {errors.categoria && <span className="text-red-500 text-xs">Requerido</span>}
-                        </div>
-                        <div className="flex gap-8">
-                            <div><label className="block font-bold mb-2">Modalidad</label><div className="flex gap-3"><label><input type="radio" disabled={esAuditor} value="Interna" {...register("modalidad", { required: true })} /> Interna</label><label><input type="radio" disabled={esAuditor} value="Externa" {...register("modalidad", { required: true })} /> Externa</label></div></div>
-                            <div><label className="block font-bold mb-2">Acción Correctiva</label><div className="flex gap-3"><label><input type="radio" disabled={esAuditor} value="SI" {...register("accion_correctiva", { required: true })} /> SI</label><label><input type="radio" disabled={esAuditor} value="NO" {...register("accion_correctiva", { required: true })} /> NO</label></div></div>
-                        </div>
-                        <div>
-                            <label className="block font-bold mb-2">Centros / Lugar</label>
-                            <div className="flex flex-wrap gap-3">{['Planta Packing', 'Fundo', 'Campo', 'Auditorio', 'Otros'].map(c => (<label key={c} className="flex gap-1"><input type="radio" disabled={esAuditor} value={c} {...register("centros", { required: true })} /> {c}</label>))}</div>
-                            {errors.centros && <span className="text-red-500 text-xs">Requerido</span>}
-                        </div>
-                    </div>
-                </div>
-
-                {/* 5. EXPOSITOR Y FOTOS */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* 2. DATOS GENERALES */}
                     <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                        <h3 className="font-bold text-gray-800 mb-4 flex gap-2"><Briefcase size={18} /> Datos del Expositor</h3>
-                        <div className="space-y-4">
-                            <div className="grid grid-cols-2 gap-4">
-                                <input disabled={esAuditor} {...register("expositor_nombre")} placeholder="Nombre Completo" className="w-full border rounded px-3 py-2 text-sm" />
-                                <input disabled={esAuditor} {...register("expositor_dni")} placeholder="DNI" className="w-full border rounded px-3 py-2 text-sm" />
+                        <div className="flex items-center gap-2 mb-4 border-b pb-2 text-blue-700"><Building2 size={20} /><h3 className="font-bold">Datos Generales</h3></div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Sede Principal</label>
+                                <div className="flex gap-4">
+                                    <label className={`flex items-center gap-2 border p-3 rounded-lg w-full ${esAuditor ? 'opacity-70' : 'cursor-pointer'} ${watch('sede_empresa') === 'Majes' ? 'bg-blue-50 border-blue-500' : ''}`}><input type="radio" disabled={esAuditor} value="Majes" {...register("sede_empresa")} className="accent-blue-600" /> <span className="font-bold text-sm">MAJES</span></label>
+                                    <label className={`flex items-center gap-2 border p-3 rounded-lg w-full ${esAuditor ? 'opacity-70' : 'cursor-pointer'} ${watch('sede_empresa') === 'Olmos' ? 'bg-blue-50 border-blue-500' : ''}`}><input type="radio" disabled={esAuditor} value="Olmos" {...register("sede_empresa")} className="accent-blue-600" /> <span className="font-bold text-sm">OLMOS</span></label>
+                                </div>
                             </div>
-                            <input disabled={esAuditor} {...register("institucion_procedencia")} placeholder="Institución" className="w-full border rounded px-3 py-2 text-sm" />
-                            <div className="border border-gray-200 rounded-lg p-3 bg-gray-50 text-center">
-                                <span className="text-xs font-bold text-gray-500 uppercase block mb-2">Firma Expositor</span>
-                                {watch('expositor_firma') ? (
-                                    <div className="flex items-center justify-center gap-2 text-green-600"><CheckCircle2 size={16} /> Firmada {!esAuditor && <button type="button" onClick={() => setValue('expositor_firma', '')}><Trash2 size={14} className="text-red-500" /></button>}</div>
-                                ) : (!esAuditor ? (
-                                    <div className="flex flex-col items-center gap-2">
-                                        <div className="flex justify-center gap-2">
-                                            <button type="button" onClick={() => setModoFirma('subir')} className={`text-xs border px-3 py-1 rounded ${modoFirma === 'subir' ? 'bg-blue-50 border-blue-200' : ''}`}><ImageIcon size={16} className="inline mr-1" /> Subir</button>
-                                            <button type="button" onClick={() => setModoFirma('pantalla')} className={`text-xs border px-3 py-1 rounded ${modoFirma === 'pantalla' ? 'bg-blue-50 border-blue-200' : ''}`}><PenTool size={16} className="inline mr-1" /> Firmar</button>
-                                        </div>
-                                        {modoFirma === 'subir' && <div className="flex items-center gap-2 mt-2"><input type="file" onChange={handleUploadFirmaExpositor} className="text-xs" />{uploadingExpositor && <Loader2 className="animate-spin text-blue-600" size={16} />}</div>}
-                                        {modoFirma === 'pantalla' && <div className="mt-2 bg-white border border-dashed w-full"><SignaturePad ref={signaturePadRef} /></div>}
+                            <div><label className="block text-sm font-medium text-gray-700 mb-1">Código Acta</label><input disabled={esAuditor} {...register("codigo_acta", { required: true })} className={`w-full border rounded px-3 py-2 bg-gray-50 font-mono text-blue-900 ${errors.codigo_acta ? 'border-red-500' : ''}`} /></div>
+                        </div>
+                    </div>
+
+                    {/* 3. DETALLES */}
+                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                        <div className="flex items-center gap-2 mb-4 border-b pb-2 text-blue-700"><Clock size={20} /><h3 className="font-bold">Detalles de la Sesión</h3></div>
+                        <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+                            <div className="md:col-span-8 relative" ref={autocompleteRef}>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Tema Principal</label>
+                                <div className="relative">
+                                    <input disabled={esAuditor} {...temaRegister} onChange={(e) => { temaRegister.onChange(e); handleTemaSearch(e.target.value); }} className="w-full border rounded pl-9 pr-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Buscar tema..." autoComplete="off" />
+                                    <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
+                                </div>
+                                {mostrarSugerencias && sugerencias.length > 0 && (
+                                    <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-60 overflow-y-auto">
+                                        <ul>
+                                            {sugerencias.map((plan, index) => (
+                                                <li key={index} onClick={() => seleccionarTema(plan)} className="px-4 py-3 hover:bg-blue-50 cursor-pointer border-b last:border-none transition-colors group">
+                                                    <div className="text-sm font-bold text-gray-800 mb-1 group-hover:text-blue-700 transition-colors">{plan.tema}</div>
+                                                    <div className="text-xs text-gray-400 mb-2">{plan.clasificacion}</div>
+                                                    {plan.areas_objetivo && (
+                                                        <div className="flex flex-wrap gap-1.5">{plan.areas_objetivo.split(',').map((area, i) => (<span key={i} className="text-[10px] uppercase font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded border border-blue-200">{area.trim()}</span>))}</div>
+                                                    )}
+                                                </li>
+                                            ))}
+                                        </ul>
                                     </div>
-                                ) : <span className="text-xs text-gray-400">Pendiente</span>)}
+                                )}
                             </div>
+                            <div className="md:col-span-4"><label className="block text-sm font-medium text-gray-400 mb-1">Actividad Económica</label><div className="w-full border rounded px-3 py-2 bg-gray-100 text-gray-500 text-sm">{empresaConfig?.actividad_economica}</div></div>
+                            <div className="md:col-span-3"><label className="block text-sm font-medium mb-1">Fecha <span className="text-red-500">*</span></label><input type="date" disabled={esAuditor} {...register("fecha", { required: true })} className={`w-full border rounded px-3 py-2 ${errors.fecha ? 'border-red-500' : ''}`} /></div>
+                            <div className="md:col-span-3"><label className="block text-sm font-medium mb-1">Inicio <span className="text-red-500">*</span></label><input type="time" disabled={esAuditor} {...register("hora_inicio", { required: true })} className={`w-full border rounded px-3 py-2 ${errors.hora_inicio ? 'border-red-500' : ''}`} /></div>
+                            <div className="md:col-span-3"><label className="block text-sm font-medium mb-1">Término <span className="text-red-500">*</span></label><input type="time" disabled={esAuditor} {...register("hora_termino", { required: true })} className={`w-full border rounded px-3 py-2 ${errors.hora_termino ? 'border-red-500' : ''}`} /></div>
+                            <div className="md:col-span-3"><label className="block text-sm font-medium mb-1">Total Horas</label><input disabled={esAuditor} {...register("total_horas")} className="w-full border rounded px-3 py-2" /></div>
+                            <div className="md:col-span-12"><label className="block text-sm font-medium mb-1">Objetivo</label><textarea disabled={esAuditor} {...register("objetivo")} rows={2} className="w-full border rounded px-3 py-2" /></div>
+                            <div className="md:col-span-12"><label className="block text-sm font-medium mb-1">Temario</label><textarea disabled={esAuditor} {...register("temario")} rows={3} className="w-full border rounded px-3 py-2" /></div>
                         </div>
                     </div>
+
+                    {/* 4. CLASIFICACIÓN */}
                     <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                        <h3 className="font-bold text-gray-800 mb-4 flex gap-2"><Camera size={18} /> Evidencias</h3>
-                        <div className="grid grid-cols-3 gap-2">
-                            {!esAuditor && (
-                                <div className="border-2 border-dashed rounded-lg flex items-center justify-center h-24 hover:bg-gray-50 cursor-pointer relative">
-                                    <input type="file" multiple accept="image/*" onChange={handleFileChange} className="absolute inset-0 opacity-0 cursor-pointer" />
-                                    <Camera className="text-gray-400" />
-                                </div>
-                            )}
-                            {fotosExistentes.map(f => (
-                                <div key={f.id_documento} className="relative h-24 border rounded overflow-hidden group">
-                                    <Image src={`http://localhost:4000${f.url}`} alt="Evidencia" fill className="object-cover" unoptimized />
-                                    {!esAuditor && <button type="button" onClick={() => removeFotoExistente(f.id_documento)} className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded opacity-0 group-hover:opacity-100 transition"><X size={12} /></button>}
-                                </div>
-                            ))}
-                            {evidenciasNuevas.map((f, i) => (
-                                <div key={i} className="relative h-24 border border-blue-300 rounded overflow-hidden group">
-                                    <Image src={URL.createObjectURL(f)} alt="Nueva" fill className="object-cover" unoptimized />
-                                    {!esAuditor && <button type="button" onClick={() => removeEvidenciaNueva(i)} className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded opacity-0 group-hover:opacity-100 transition"><X size={12} /></button>}
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-
-                {/* 6. LISTA DE PERSONAS (ASISTENTES Y FALTANTES) */}
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                    <div className="flex flex-col md:flex-row justify-between items-end mb-6 border-b pb-2 gap-4">
-                        <div className="flex gap-2 p-1 bg-gray-100 rounded-lg">
-                            <button type="button" onClick={() => setActiveTab('asistentes')} className={`flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-md transition ${activeTab === 'asistentes' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500'}`}><UserCheck size={16} /> Asistentes ({fields.length})</button>
-                            <button type="button" onClick={() => setActiveTab('faltantes')} className={`flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-md transition ${activeTab === 'faltantes' ? 'bg-white text-red-600 shadow-sm' : 'text-gray-500'}`}><UserX size={16} /> Faltantes ({faltantes.length})</button>
-                        </div>
-                    </div>
-
-                    {/* VISTA B: ASISTENTES (TABLA INTELIGENTE) */}
-                    {activeTab === 'asistentes' && (
-                        <div className="animate-in fade-in">
-                            {!esAuditor && (
-                                <div className="flex gap-2 mb-4">
-                                    {watch('area_objetivo') && (
-                                        <button type="button" onClick={cargarTrabajadoresDeArea} className="flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 text-xs font-bold shadow-sm transition-all" title={`Cargar personal de: ${watch('area_objetivo')}`}><UserCheck size={16} /><span className="hidden sm:inline">Autocompletar ({watch('area_objetivo')})</span></button>
-                                    )}
-                                    {fields.length > 0 && (
-                                        <button type="button" onClick={() => { if (confirm("¿Estás seguro de vaciar toda la lista?")) { replace([{ numero: 1, dni: '', apellidos_nombres: '', area: '', cargo: '', genero: 'M', condicion: '' }]); } }} className="flex items-center gap-2 px-3 py-1.5 bg-red-100 text-red-600 border border-red-200 rounded-lg hover:bg-red-200 text-xs font-bold transition-all" title="Borrar toda la lista"><Trash2 size={16} /><span className="hidden sm:inline">Limpiar</span></button>
-                                    )}
-                                </div>
-                            )}
-                            <div className="hidden md:grid grid-cols-12 gap-2 text-xs font-bold text-gray-500 mb-2 uppercase px-2">
-                                <div className="col-span-1 text-center">#</div><div className="col-span-2">DNI</div><div className="col-span-4">Nombres</div><div className="col-span-2">Área</div><div className="col-span-2">Cargo</div><div className="col-span-1 text-center">Firma</div>
+                        <div className="flex items-center gap-2 mb-4 border-b pb-2 text-blue-700"><FileText size={20} /><h3 className="font-bold">Clasificación</h3></div>
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 text-sm">
+                            <div>
+                                <label className="block font-bold text-gray-700 mb-2">Actividad</label>
+                                <div className="grid grid-cols-2 gap-2">{['Inducción', 'Capacitación', 'Entrenamiento', 'Taller', 'Charla', 'Simulacro', 'Otros'].map(op => (<label key={op} className="flex items-center gap-2"><input type="radio" disabled={esAuditor} value={op} {...register("actividad", { required: true })} /> {op}</label>))}</div>
+                                {errors.actividad && <span className="text-red-500 text-xs">Requerido</span>}
                             </div>
-                            <div className="space-y-2">
-                                {fields.map((item, index) => {
-                                    const { opcionesNombres, opcionesDNI, cargosDisponibles, areasDisponibles } = getOpcionesFila(index);
-                                    return (
-                                        <div key={item.id} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center bg-gray-50 p-2 rounded border text-sm mb-2">
-                                            <div className="col-span-1 font-bold text-center">{index + 1}</div>
-                                            <div className="col-span-2"><Controller name={`participantes.${index}.dni`} control={control} render={({ field }) => <Select {...field} isDisabled={esAuditor} options={opcionesDNI} placeholder="DNI" onChange={(val: SelectOption | null) => { field.onChange(val?.value); if (val?.datos) autocompletarFila(index, val.datos); }} value={opcionesDNI.find(op => op.value === field.value)} styles={customStyles} noOptionsMessage={() => "No encontrado"} />} /></div>
-                                            <div className="col-span-4"><Controller name={`participantes.${index}.apellidos_nombres`} control={control} render={({ field }) => <Select {...field} isDisabled={esAuditor} options={opcionesNombres} placeholder="Nombre" onChange={(val: SelectOption | null) => { field.onChange(val?.label); if (val?.datos) autocompletarFila(index, val.datos); }} value={opcionesNombres.find(op => op.label === field.value)} styles={customStyles} />} /></div>
-                                            <div className="col-span-2"><Controller name={`participantes.${index}.area`} control={control} render={({ field }) => <Select {...field} isDisabled={esAuditor} options={areasDisponibles} placeholder="Área" onChange={(val: SelectOption | null) => { field.onChange(val?.label); setValue(`participantes.${index}.cargo`, ''); }} value={areasDisponibles.find(a => a.value === field.value)} styles={customStyles} />} /></div>
-                                            <div className="col-span-2"><Controller name={`participantes.${index}.cargo`} control={control} render={({ field }) => <Select {...field} isDisabled={esAuditor || !watch(`participantes.${index}.area`)} options={cargosDisponibles} placeholder="Cargo" onChange={(val: SelectOption | null) => field.onChange(val?.value)} value={cargosDisponibles.find(op => op.value === field.value)} styles={customStyles} />} /></div>
-                                            <div className="col-span-1 flex justify-center gap-1">
-                                                {watch(`participantes.${index}.firma_url`) ? <CheckCircle2 className="text-green-600" size={18} /> : (!esAuditor && (<><label className={`cursor-pointer ${uploadingRow === index ? 'animate-spin' : ''}`}><input type="file" className="hidden" onChange={(e) => handleUploadFirma(index, e)} /><UploadCloud size={16} className="text-blue-500" /></label><button type="button" onClick={() => abrirModalFirma(index)}><PenTool size={16} className="text-purple-500" /></button></>))}
-                                                {!esAuditor && <button type="button" onClick={() => remove(index)}><Trash2 size={16} className="text-red-500" /></button>}
+                            <div>
+                                <label className="block font-bold text-gray-700 mb-2">Categoría</label>
+                                <select disabled={esAuditor} {...register("categoria", { required: true })} className="w-full border rounded px-2 py-1.5"><option value="">-- Seleccionar --</option><option value="Seguridad">Seguridad</option><option value="Inocuidad">Inocuidad</option><option value="Cadena">Cadena Suministro</option><option value="Medio Ambiente">Medio Ambiente</option><option value="Responsabilidad Social">Resp. Social</option><option value="Gobernanza">Gobernanza</option><option value="Otros">Otros</option></select>
+                                {errors.categoria && <span className="text-red-500 text-xs">Requerido</span>}
+                            </div>
+                            <div className="flex gap-8">
+                                <div><label className="block font-bold mb-2">Modalidad</label><div className="flex gap-3"><label><input type="radio" disabled={esAuditor} value="Interna" {...register("modalidad", { required: true })} /> Interna</label><label><input type="radio" disabled={esAuditor} value="Externa" {...register("modalidad", { required: true })} /> Externa</label></div></div>
+                                <div><label className="block font-bold mb-2">Acción Correctiva</label><div className="flex gap-3"><label><input type="radio" disabled={esAuditor} value="SI" {...register("accion_correctiva", { required: true })} /> SI</label><label><input type="radio" disabled={esAuditor} value="NO" {...register("accion_correctiva", { required: true })} /> NO</label></div></div>
+                            </div>
+                            <div>
+                                <label className="block font-bold mb-2">Centros / Lugar</label>
+                                <div className="flex flex-wrap gap-3">{['Planta Packing', 'Fundo', 'Campo', 'Auditorio', 'Otros'].map(c => (<label key={c} className="flex gap-1"><input type="radio" disabled={esAuditor} value={c} {...register("centros", { required: true })} /> {c}</label>))}</div>
+                                {errors.centros && <span className="text-red-500 text-xs">Requerido</span>}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 5. EXPOSITOR Y FOTOS */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                            <h3 className="font-bold text-gray-800 mb-4 flex gap-2"><Briefcase size={18} /> Datos del Expositor</h3>
+                            <div className="space-y-4">
+                                <div className="grid grid-cols-2 gap-4">
+                                    <input disabled={esAuditor} {...register("expositor_nombre")} placeholder="Nombre Completo" className="w-full border rounded px-3 py-2 text-sm" />
+                                    <input disabled={esAuditor} {...register("expositor_dni")} placeholder="DNI" className="w-full border rounded px-3 py-2 text-sm" />
+                                </div>
+                                <input disabled={esAuditor} {...register("institucion_procedencia")} placeholder="Institución" className="w-full border rounded px-3 py-2 text-sm" />
+                                <div className="border border-gray-200 rounded-lg p-3 bg-gray-50 text-center">
+                                    <span className="text-xs font-bold text-gray-500 uppercase block mb-2">Firma Expositor</span>
+                                    {watch('expositor_firma') ? (
+                                        <div className="flex items-center justify-center gap-2 text-green-600"><CheckCircle2 size={16} /> Firmada {!esAuditor && <button type="button" onClick={() => setValue('expositor_firma', '')}><Trash2 size={14} className="text-red-500" /></button>}</div>
+                                    ) : (!esAuditor ? (
+                                        <div className="flex flex-col items-center gap-2">
+                                            <div className="flex justify-center gap-2">
+                                                <button type="button" onClick={() => setModoFirma('subir')} className={`text-xs border px-3 py-1 rounded ${modoFirma === 'subir' ? 'bg-blue-50 border-blue-200' : ''}`}><ImageIcon size={16} className="inline mr-1" /> Subir</button>
+                                                <button type="button" onClick={() => setModoFirma('pantalla')} className={`text-xs border px-3 py-1 rounded ${modoFirma === 'pantalla' ? 'bg-blue-50 border-blue-200' : ''}`}><PenTool size={16} className="inline mr-1" /> Firmar</button>
                                             </div>
+                                            {modoFirma === 'subir' && <div className="flex items-center gap-2 mt-2"><input type="file" onChange={handleUploadFirmaExpositor} className="text-xs" />{uploadingExpositor && <Loader2 className="animate-spin text-blue-600" size={16} />}</div>}
+                                            {modoFirma === 'pantalla' && <div className="mt-2 bg-white border border-dashed w-full"><SignaturePad ref={signaturePadRef} /></div>}
                                         </div>
-                                    );
-                                })}
-                            </div>
-                            {!esAuditor && <div className="mt-4 flex justify-center"><button type="button" onClick={() => append({ numero: 0, dni: '', apellidos_nombres: '', area: '', cargo: '', genero: 'M', condicion: '' })} className="flex items-center gap-2 px-4 py-2 border-2 border-dashed text-blue-600 rounded-lg hover:bg-blue-50"><UserPlus size={18} /> Agregar Fila</button></div>}
-                        </div>
-                    )}
-
-                    {/* VISTA C: FALTANTES */}
-                    {activeTab === 'faltantes' && (
-                        <div className="animate-in fade-in">
-                            {faltantes.length === 0 ? (
-                                <div className="p-8 text-center text-gray-500 bg-gray-50 rounded-lg border border-dashed"><CheckCircle2 size={32} className="mx-auto text-green-500 mb-2" /><p className="font-bold">¡Excelente!</p><p className="text-sm">Todos asistieron.</p></div>
-                            ) : (
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                                    {faltantes.map((f) => (
-                                        <div key={f.id_trabajador} className="bg-red-50 border border-red-100 p-3 rounded-lg flex items-center gap-3">
-                                            <div className="w-8 h-8 rounded-full bg-white text-red-500 flex items-center justify-center font-bold text-xs border border-red-200"><AlertCircle size={16} /></div>
-                                            <div className="overflow-hidden"><p className="font-bold text-gray-800 text-sm truncate" title={`${f.apellidos} ${f.nombres}`}>{f.apellidos}, {f.nombres}</p><p className="text-xs text-gray-500 truncate">{f.cargo} • {f.dni}</p></div>
-                                        </div>
-                                    ))}
+                                    ) : <span className="text-xs text-gray-400">Pendiente</span>)}
                                 </div>
-                            )}
+                            </div>
                         </div>
-                    )}
-                </div>
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                            <h3 className="font-bold text-gray-800 mb-4 flex gap-2"><Camera size={18} /> Evidencias</h3>
+                            <div className="grid grid-cols-3 gap-2">
+                                {!esAuditor && (
+                                    <div className="border-2 border-dashed rounded-lg flex items-center justify-center h-24 hover:bg-gray-50 cursor-pointer relative">
+                                        <input type="file" multiple accept="image/*" onChange={handleFileChange} className="absolute inset-0 opacity-0 cursor-pointer" />
+                                        <Camera className="text-gray-400" />
+                                    </div>
+                                )}
+                                {fotosExistentes.map(f => (
+                                    <div key={f.id_documento} className="relative h-24 border rounded overflow-hidden group">
+                                        <Image src={`http://localhost:4000${f.url}`} alt="Evidencia" fill className="object-cover" unoptimized />
+                                        {!esAuditor && <button type="button" onClick={() => removeFotoExistente(f.id_documento)} className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded opacity-0 group-hover:opacity-100 transition"><X size={12} /></button>}
+                                    </div>
+                                ))}
+                                {evidenciasNuevas.map((f, i) => (
+                                    <div key={i} className="relative h-24 border border-blue-300 rounded overflow-hidden group">
+                                        <Image src={URL.createObjectURL(f)} alt="Nueva" fill className="object-cover" unoptimized />
+                                        {!esAuditor && <button type="button" onClick={() => removeEvidenciaNueva(i)} className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded opacity-0 group-hover:opacity-100 transition"><X size={12} /></button>}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
 
-                {/* BOTONES */}
-                <div className="flex justify-end gap-4 pt-4 border-t">
-                    <button type="button" onClick={() => router.back()} className="px-6 py-2 border rounded-lg text-gray-600 hover:bg-gray-50">{esAuditor ? 'Volver' : 'Cancelar'}</button>
-                    {!esAuditor && <button type="submit" disabled={saving} className="flex items-center gap-2 px-8 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold shadow">
-                        <Save size={20} /> {saving ? 'Guardando...' : 'Actualizar Datos'}
-                    </button>}
-                </div>
-            </form>
+                    {/* 6. LISTA DE PERSONAS (ASISTENTES Y FALTANTES) */}
+                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                        <div className="flex flex-col md:flex-row justify-between items-end mb-6 border-b pb-2 gap-4">
+                            {/* 🟢 TABS INTERNOS (LISTA) */}
+                            <div className="flex gap-2 p-1 bg-gray-100 rounded-lg">
+                                <button type="button" onClick={() => setListTab('asistentes')} className={`flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-md transition ${listTab === 'asistentes' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500'}`}><UserCheck size={16} /> Asistentes ({fields.length})</button>
+                                <button type="button" onClick={() => setListTab('faltantes')} className={`flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-md transition ${listTab === 'faltantes' ? 'bg-white text-red-600 shadow-sm' : 'text-gray-500'}`}><UserX size={16} /> Faltantes ({faltantes.length})</button>
+                            </div>
+                        </div>
+
+                        {/* VISTA B: ASISTENTES (TABLA INTELIGENTE) */}
+                        {listTab === 'asistentes' && (
+                            <div className="animate-in fade-in">
+                                {!esAuditor && (
+                                    <div className="flex gap-2 mb-4">
+                                        {watch('area_objetivo') && (
+                                            <button type="button" onClick={cargarTrabajadoresDeArea} className="flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 text-xs font-bold shadow-sm transition-all" title={`Cargar personal de: ${watch('area_objetivo')}`}><UserCheck size={16} /><span className="hidden sm:inline">Autocompletar ({watch('area_objetivo')})</span></button>
+                                        )}
+                                        {fields.length > 0 && (
+                                            <button type="button" onClick={() => { if (confirm("¿Estás seguro de vaciar toda la lista?")) { replace([{ numero: 1, dni: '', apellidos_nombres: '', area: '', cargo: '', genero: 'M', condicion: '' }]); } }} className="flex items-center gap-2 px-3 py-1.5 bg-red-100 text-red-600 border border-red-200 rounded-lg hover:bg-red-200 text-xs font-bold transition-all" title="Borrar toda la lista"><Trash2 size={16} /><span className="hidden sm:inline">Limpiar</span></button>
+                                        )}
+                                    </div>
+                                )}
+                                <div className="hidden md:grid grid-cols-12 gap-2 text-xs font-bold text-gray-500 mb-2 uppercase px-2">
+                                    <div className="col-span-1 text-center">#</div><div className="col-span-2">DNI</div><div className="col-span-4">Nombres</div><div className="col-span-2">Área</div><div className="col-span-2">Cargo</div><div className="col-span-1 text-center">Firma</div>
+                                </div>
+                                <div className="space-y-2">
+                                    {fields.map((item, index) => {
+                                        const { opcionesNombres, opcionesDNI, cargosDisponibles, areasDisponibles } = getOpcionesFila(index);
+                                        return (
+                                            <div key={item.id} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center bg-gray-50 p-2 rounded border text-sm mb-2">
+                                                <div className="col-span-1 font-bold text-center">{index + 1}</div>
+                                                <div className="col-span-2"><Controller name={`participantes.${index}.dni`} control={control} render={({ field }) => <Select {...field} isDisabled={esAuditor} options={opcionesDNI} placeholder="DNI" onChange={(val: SelectOption | null) => { field.onChange(val?.value); if (val?.datos) autocompletarFila(index, val.datos); }} value={opcionesDNI.find(op => op.value === field.value)} styles={customStyles} noOptionsMessage={() => "No encontrado"} />} /></div>
+                                                <div className="col-span-4"><Controller name={`participantes.${index}.apellidos_nombres`} control={control} render={({ field }) => <Select {...field} isDisabled={esAuditor} options={opcionesNombres} placeholder="Nombre" onChange={(val: SelectOption | null) => { field.onChange(val?.label); if (val?.datos) autocompletarFila(index, val.datos); }} value={opcionesNombres.find(op => op.label === field.value)} styles={customStyles} />} /></div>
+                                                <div className="col-span-2"><Controller name={`participantes.${index}.area`} control={control} render={({ field }) => <Select {...field} isDisabled={esAuditor} options={areasDisponibles} placeholder="Área" onChange={(val: SelectOption | null) => { field.onChange(val?.label); setValue(`participantes.${index}.cargo`, ''); }} value={areasDisponibles.find(a => a.value === field.value)} styles={customStyles} />} /></div>
+                                                <div className="col-span-2"><Controller name={`participantes.${index}.cargo`} control={control} render={({ field }) => <Select {...field} isDisabled={esAuditor || !watch(`participantes.${index}.area`)} options={cargosDisponibles} placeholder="Cargo" onChange={(val: SelectOption | null) => field.onChange(val?.value)} value={cargosDisponibles.find(op => op.value === field.value)} styles={customStyles} />} /></div>
+                                                <div className="col-span-1 flex justify-center gap-1">
+                                                    {watch(`participantes.${index}.firma_url`) ? <CheckCircle2 className="text-green-600" size={18} /> : (!esAuditor && (<><label className={`cursor-pointer ${uploadingRow === index ? 'animate-spin' : ''}`}><input type="file" className="hidden" onChange={(e) => handleUploadFirma(index, e)} /><UploadCloud size={16} className="text-blue-500" /></label><button type="button" onClick={() => abrirModalFirma(index)}><PenTool size={16} className="text-purple-500" /></button></>))}
+                                                    {!esAuditor && <button type="button" onClick={() => remove(index)}><Trash2 size={16} className="text-red-500" /></button>}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                {!esAuditor && <div className="mt-4 flex justify-center"><button type="button" onClick={() => append({ numero: 0, dni: '', apellidos_nombres: '', area: '', cargo: '', genero: 'M', condicion: '' })} className="flex items-center gap-2 px-4 py-2 border-2 border-dashed text-blue-600 rounded-lg hover:bg-blue-50"><UserPlus size={18} /> Agregar Fila</button></div>}
+                            </div>
+                        )}
+
+                        {/* VISTA C: FALTANTES */}
+                        {listTab === 'faltantes' && (
+                            <div className="animate-in fade-in">
+                                {faltantes.length === 0 ? (
+                                    <div className="p-8 text-center text-gray-500 bg-gray-50 rounded-lg border border-dashed"><CheckCircle2 size={32} className="mx-auto text-green-500 mb-2" /><p className="font-bold">¡Excelente!</p><p className="text-sm">Todos asistieron.</p></div>
+                                ) : (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                        {faltantes.map((f) => (
+                                            <div key={f.id_trabajador} className="bg-red-50 border border-red-100 p-3 rounded-lg flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-full bg-white text-red-500 flex items-center justify-center font-bold text-xs border border-red-200"><AlertCircle size={16} /></div>
+                                                <div className="overflow-hidden"><p className="font-bold text-gray-800 text-sm truncate" title={`${f.apellidos} ${f.nombres}`}>{f.apellidos}, {f.nombres}</p><p className="text-xs text-gray-500 truncate">{f.cargo} • {f.dni}</p></div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* BOTONES */}
+                    <div className="flex justify-end gap-4 pt-4 border-t">
+                        <button type="button" onClick={() => router.back()} className="px-6 py-2 border rounded-lg text-gray-600 hover:bg-gray-50">{esAuditor ? 'Volver' : 'Cancelar'}</button>
+                        {!esAuditor && <button type="submit" disabled={saving} className="flex items-center gap-2 px-8 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold shadow">
+                            <Save size={20} /> {saving ? 'Guardando...' : 'Actualizar Datos'}
+                        </button>}
+                    </div>
+                </form>
+            )}
         </div>
     );
 }

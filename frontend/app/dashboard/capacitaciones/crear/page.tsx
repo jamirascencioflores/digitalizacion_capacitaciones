@@ -31,6 +31,7 @@ interface PlanItem {
     areas_objetivo?: string;
     objetivo?: string;
     categoria?: string;
+    eje?: string;
 }
 
 interface EmpresaConfig {
@@ -206,7 +207,9 @@ export default function CrearCapacitacionPage() {
     };
 
     const seleccionarTema = (plan: PlanItem) => {
-        // 1. Asignar Nombre y Actividad
+        console.log("Datos del Plan:", plan);
+
+        // 1. Asignar Tema y Actividad
         setValue('tema_principal', (plan.tema || '').trim());
 
         const tipoActividad = (plan.clasificacion || '').toLowerCase();
@@ -215,30 +218,33 @@ export default function CrearCapacitacionPage() {
         else if (tipoActividad.includes('taller')) actividadFinal = 'Taller';
         else if (tipoActividad.includes('charla')) actividadFinal = 'Charla';
         else if (tipoActividad.includes('simulacro')) actividadFinal = 'Simulacro';
+        else if (tipoActividad.includes('entrenamiento')) actividadFinal = 'Entrenamiento';
         setValue('actividad', actividadFinal);
 
-        // 3. 🟢 ASIGNAR CATEGORÍA (Desde la columna 'categoria' del Excel/BD)
+        // 3. 🟢 ASIGNAR CATEGORÍA (Lógica estricta)
+        // Buscamos el dato en 'categoria' (BD) o 'eje' (si viniera del excel directo)
+        const categoriaBD = (plan.categoria || plan.eje || '').trim();
         let categoriaFinal = 'Otros';
 
-        // Usamos plan.categoria en vez de plan.eje
-        if (plan.categoria) {
-            const catNormalizada = normalizar(plan.categoria);
+        // Mapeo exacto de lo que dice el Excel/BD a lo que dice el <select>
+        // Normalizamos para ignorar mayúsculas/minúsculas y tildes
+        const catNorm = normalizar(categoriaBD);
 
-            if (catNormalizada.includes('social')) {
-                categoriaFinal = 'Responsabilidad Social';
-            } else if (catNormalizada.includes('ambiente')) {
-                categoriaFinal = 'Medio Ambiente';
-            } else if (catNormalizada.includes('inocuidad')) {
-                categoriaFinal = 'Inocuidad';
-            } else if (catNormalizada.includes('seguridad') || catNormalizada.includes('sst')) {
-                categoriaFinal = 'Seguridad';
-            } else if (catNormalizada.includes('cadena')) {
-                categoriaFinal = 'Cadena';
-            } else if (catNormalizada.includes('gobernanza')) {
-                categoriaFinal = 'Gobernanza'; // Asegúrate de tener esta opción en tu <select>
-            }
+        if (catNorm.includes('social') || catNorm.includes('humanos')) {
+            categoriaFinal = 'Responsabilidad Social';
+        } else if (catNorm.includes('ambiente') || catNorm.includes('ambiental')) {
+            categoriaFinal = 'Medio Ambiente';
+        } else if (catNorm.includes('inocuidad') || catNorm.includes('alimentaria')) {
+            categoriaFinal = 'Inocuidad';
+        } else if (catNorm.includes('seguridad') || catNorm.includes('sst') || catNorm.includes('ssoma')) {
+            categoriaFinal = 'Seguridad';
+        } else if (catNorm.includes('cadena') || catNorm.includes('suministro')) {
+            categoriaFinal = 'Cadena';
+        } else if (catNorm.includes('gobernanza') || catNorm.includes('gobierno') || catNorm.includes('etica')) {
+            categoriaFinal = 'Gobernanza';
         }
 
+        console.log("Categoría asignada:", categoriaFinal);
         setValue('categoria', categoriaFinal);
 
         // 4. Asignar Áreas y Objetivo
@@ -246,6 +252,7 @@ export default function CrearCapacitacionPage() {
         else setValue('area_objetivo', '');
 
         if (plan.objetivo) setValue('objetivo', plan.objetivo);
+        else setValue('objetivo', '');
 
         setValue('modalidad', 'Interna');
         setMostrarSugerencias(false);
@@ -641,7 +648,7 @@ export default function CrearCapacitacionPage() {
                         <div>
                             <label className="block font-bold text-gray-700 mb-2">Actividad *</label>
                             <div className={`grid grid-cols-2 gap-2 p-2 rounded ${errors.actividad ? 'bg-red-50' : ''}`}>
-                                {['Inducción', 'Capacitación', 'Taller', 'Charla', 'Simulacro', 'Otros'].map(op => (
+                                {['Inducción', 'Capacitación', 'Entrenamiento', 'Taller', 'Charla', 'Simulacro', 'Otros'].map(op => (
                                     <label key={op} className="flex items-center gap-2 cursor-pointer"><input type="radio" value={op} {...register("actividad", { required: true })} className="accent-blue-600" /> {op}</label>
                                 ))}
                             </div>

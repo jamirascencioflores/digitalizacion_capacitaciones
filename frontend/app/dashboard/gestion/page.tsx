@@ -9,6 +9,7 @@ import {
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell
 } from 'recharts';
+import { AxiosError } from 'axios';
 
 // --- INTERFACES ---
 interface Worker {
@@ -163,18 +164,27 @@ export default function GestionPage() {
     const handleUpload = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!file) return alert("Selecciona un archivo");
+
         const formData = new FormData();
         formData.append('file', file);
+
         try {
             setUploading(true);
-            await api.post('/gestion/plan', formData);
-            alert("¡Plan cargado!");
+
+            // Enviamos con la cabecera correcta
+            await api.post('/gestion/plan', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+
+            alert("¡Plan cargado con éxito! 📈");
             setFile(null);
             setShowUpload(false);
-            loadStats();
+            // loadStats(); // Si tienes esta función
         } catch (error) {
             console.error(error);
-            alert("Error al subir.");
+            const err = error as AxiosError<{ error: string }>;
+            const msg = err.response?.data?.error || "Error al subir el archivo.";
+            alert(`❌ Error: ${msg}`);
         } finally {
             setUploading(false);
         }

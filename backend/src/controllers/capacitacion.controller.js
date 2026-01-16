@@ -196,10 +196,19 @@ const obtenerCapacitacion = async (req, res) => {
 
     // 1. Buscar la capacitación
     const capacitacion = await prisma.capacitaciones.findUnique({
-      where: { id_capacitacion: Number(id) },
+      where: { id_capacitacion: parseInt(id) },
       include: {
         participantes: true,
         documentos: true,
+        evaluaciones: {
+          include: {
+            preguntas: {
+              include: {
+                opciones: true,
+              },
+            },
+          },
+        },
       },
     });
 

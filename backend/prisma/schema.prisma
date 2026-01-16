@@ -77,6 +77,8 @@ model capacitaciones {
   usuarios              usuarios @relation(fields: [creado_por], references: [id_usuario])
   participantes         participantes[]
   documentos            documentos[]
+
+  evaluaciones    Evaluacion[]
 }
 
 // --------------------------------------
@@ -145,4 +147,58 @@ model PlanAnual {
   mes_programado    String?  @db.VarChar(50)
   clasificacion     String?  @db.VarChar(100)
   creado_en         DateTime @default(now())
+}
+
+// --------------------------------------
+// 8. MÓDULO DE EVALUACIONES (PRE/POST TEST)
+// --------------------------------------
+
+model Evaluacion {
+  id_evaluacion   Int      @id @default(autoincrement())
+  id_capacitacion Int
+  tipo            String   // 'PRE_TEST', 'POST_TEST', 'SATISFACCION'
+  titulo          String   // Ej: "Examen de Salida - Extintores"
+  estado          Boolean  @default(true) // true: Habilitado para responder
+  creado_en       DateTime @default(now())
+
+  // Relaciones
+  capacitacion    capacitaciones @relation(fields: [id_capacitacion], references: [id_capacitacion], onDelete: Cascade)
+  
+  preguntas       Pregunta[]
+  intentos        IntentoEvaluacion[]
+}
+
+model Pregunta {
+  id_pregunta     Int      @id @default(autoincrement())
+  id_evaluacion   Int
+  enunciado       String   @db.Text // Ej: "¿Qué tipo de fuego apaga el agua?"
+  puntos          Int      @default(4) // Peso de la pregunta
+  
+  // Relaciones
+  evaluacion      Evaluacion @relation(fields: [id_evaluacion], references: [id_evaluacion], onDelete: Cascade)
+  opciones        Opcion[]
+}
+
+model Opcion {
+  id_opcion       Int      @id @default(autoincrement())
+  id_pregunta     Int
+  texto           String   // Ej: "Fuego Clase A"
+  es_correcta     Boolean  @default(false)
+
+  // Relaciones
+  pregunta        Pregunta @relation(fields: [id_pregunta], references: [id_pregunta], onDelete: Cascade)
+}
+
+// Historial de respuestas de los trabajadores
+model IntentoEvaluacion {
+  id_intento      Int      @id @default(autoincrement())
+  id_evaluacion   Int
+  dni_trabajador  String   // Vinculamos con el DNI que ingresan
+  nombre_completo String?  // Guardamos el nombre para no hacer tantos cruces
+  nota            Int      // Ej: 16, 20, 05
+  respuestas_json String?  @db.Text // Guardamos qué opciones marcó { "preg_1": "opc_2", ... }
+  fecha_intento   DateTime @default(now())
+
+  // Relaciones
+  evaluacion      Evaluacion @relation(fields: [id_evaluacion], references: [id_evaluacion], onDelete: Cascade)
 }
