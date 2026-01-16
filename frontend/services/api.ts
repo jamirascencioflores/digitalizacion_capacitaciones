@@ -1,11 +1,14 @@
 // frontend/services/api.ts
 import axios from "axios";
 
+/**
+ * 🟢 CONFIGURACIÓN DINÁMICA DE URL
+ * * Prioridad 1: Variable de entorno NEXT_PUBLIC_API_URL (Para Vercel o para Móvil en local)
+ * Prioridad 2: Localhost por defecto (Para tu PC)
+ */
+const baseURL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 const api = axios.create({
-  // Asegúrate de que el puerto coincida con tu backend (4000)
-  baseURL: "http://localhost:4000/api",
-  // SOLO SI ESTÁS CON LA TABLET/CELULAR usa tu IP real
-  // baseURL: 'http://192.168.1.15:4000/api'
+  baseURL: baseURL,
   headers: {
     "Content-Type": "application/json",
   },
@@ -14,8 +17,6 @@ const api = axios.create({
 // 🟢 INTERCEPTOR: Inyectar el token automáticamente
 api.interceptors.request.use(
   (config) => {
-    // Leemos el token del almacenamiento local
-    // (Asegúrate de que esta clave 'token' coincida con la que usas en AuthContext)
     if (typeof window !== "undefined") {
       const token = localStorage.getItem("token");
       if (token) {
@@ -26,16 +27,14 @@ api.interceptors.request.use(
   },
   (error) => {
     return Promise.reject(error);
-  }
+  },
 );
 
-// 🔴 INTERCEPTOR DE RESPUESTA (Opcional pero recomendado)
-// Si el backend dice "Token vencido" (401), cerramos sesión automáticamente
+// 🔴 INTERCEPTOR DE RESPUESTA (Manejo de sesión expirada)
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response && error.response.status === 401) {
-      // Evitar loop infinito si ya estamos en login
       if (
         typeof window !== "undefined" &&
         !window.location.pathname.includes("/login")
@@ -43,11 +42,12 @@ api.interceptors.response.use(
         console.warn("Sesión expirada o inválida. Cerrando sesión...");
         localStorage.removeItem("token");
         localStorage.removeItem("user");
+        // Opcional: Redirigir al login
         window.location.href = "/login";
       }
     }
     return Promise.reject(error);
-  }
+  },
 );
 
 export default api;
