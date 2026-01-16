@@ -57,3 +57,8 @@ export const deleteIntento = async (id_intento: number) => {
   const response = await api.delete(`/evaluaciones/intento/${id_intento}`);
   return response.data;
 };
+
+export const toggleEstadoExamen = async (id: number, estado: boolean) => {
+  const response = await api.put(`/evaluaciones/${id}/estado`, { estado });
+  return response.data;
+};

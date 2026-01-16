@@ -159,6 +159,7 @@ model Evaluacion {
   tipo            String   // 'PRE_TEST', 'POST_TEST', 'SATISFACCION'
   titulo          String   // Ej: "Examen de Salida - Extintores"
   estado          Boolean  @default(true) // true: Habilitado para responder
+  fecha_cierre    DateTime? // 🟢 NUEVO: Si es null, es infinito. Si tiene fecha, se cierra ahí.
   creado_en       DateTime @default(now())
 
   // Relaciones

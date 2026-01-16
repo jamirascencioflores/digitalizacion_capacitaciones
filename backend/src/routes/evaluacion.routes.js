@@ -11,5 +11,6 @@ router.get("/:id/resultados", evalController.obtenerResultados); // Ver notas (A
 router.delete("/:id", evalController.eliminarEvaluacion); // Eliminar examen (Admin)
 router.put("/:id", evalController.editarEvaluacion); // Editar examen (Admin)
 router.delete("/intento/:id", evalController.eliminarIntento); // Eliminar intento (Admin)
+router.put("/:id/estado", evalController.toggleEstado); // 🟢 Nueva ruta para el switch
 
 module.exports = router;
