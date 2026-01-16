@@ -1,18 +1,9 @@
 // backend/src/controllers/upload.controller.js
 const multer = require("multer");
-const path = require("path");
+const { uploadImage } = require("../utils/cloudinary"); // Importamos tu utilidad
 
-// Configuración de almacenamiento
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, "uploads/"); // Carpeta donde se guardan
-  },
-  filename: function (req, file, cb) {
-    // Generamos nombre único: fecha + nombre original
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
-  },
-});
+// 1. CONFIGURACIÓN MULTER (CAMBIO CLAVE: Memoria, no Disco)
+const storage = multer.memoryStorage();
 
 // Filtro (Solo imágenes)
 const fileFilter = (req, file, cb) => {
@@ -25,19 +16,29 @@ const fileFilter = (req, file, cb) => {
 
 const upload = multer({ storage: storage, fileFilter: fileFilter });
 
-// Función que usa la ruta
-const subirArchivo = (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: "No se envió ningún archivo" });
+// 2. FUNCIÓN DE SUBIDA (Ahora sube a Cloudinary)
+const subirArchivo = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "No se envió ningún archivo" });
+    }
+
+    console.log("📤 Pre-cargando imagen a Cloudinary...");
+
+    // Usamos tu utilidad para subir el buffer a Cloudinary
+    const result = await uploadImage(req.file.buffer, "uploads_generales");
+
+    console.log("✅ Imagen lista:", result.secure_url);
+
+    // Devolvemos la URL de Cloudinary para que el Frontend la use
+    res.json({
+      url: result.secure_url,
+      filename: result.public_id,
+    });
+  } catch (error) {
+    console.error("Error al subir archivo:", error);
+    res.status(500).json({ error: "Error al subir la imagen" });
   }
-
-  // Construimos la URL para acceder al archivo
-  // En producción, cambia 'localhost:4000' por tu dominio real
-  const protocol = req.protocol;
-  const host = req.get("host");
-  const fileUrl = `${protocol}://${host}/uploads/${req.file.filename}`;
-
-  res.json({ url: fileUrl, filename: req.file.filename });
 };
 
 module.exports = { upload, subirArchivo };
