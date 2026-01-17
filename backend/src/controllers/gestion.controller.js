@@ -82,13 +82,13 @@ const subirPlanAnual = async (req, res) => {
       });
 
       const tieneTema = rowTexts.some(
-        (x) => x.txt.includes("tema") || x.txt.includes("actividad")
+        (x) => x.txt.includes("tema") || x.txt.includes("actividad"),
       );
       const tieneArea = rowTexts.some(
         (x) =>
           x.txt.includes("procesos") ||
           x.txt.includes("área") ||
-          x.txt.includes("area")
+          x.txt.includes("area"),
       );
 
       if (tieneTema && tieneArea) {
@@ -141,7 +141,33 @@ const subirPlanAnual = async (req, res) => {
       const areaNombre =
         colIndexes.area > 0 ? row.getCell(colIndexes.area).text?.trim() : null;
 
-      if (!temaExcel || temaExcel.length < 3 || !areaNombre) {
+      // 🔴 1. FILTRO DE LIMPIEZA AGRESIVO
+      // Si el texto normalizado es igual a un encabezado, LO SALTAMOS
+      const temaCheck = normalizar(temaExcel || "");
+      const areaCheck = normalizar(areaNombre || "");
+
+      const blacklist = [
+        "tema",
+        "temas",
+        "actividad",
+        "actividades",
+        "area",
+        "areas",
+        "area/procesos",
+        "procesos",
+        "proceso",
+        "responsable",
+        "clasificacion",
+        "mes",
+      ];
+
+      if (
+        !temaExcel ||
+        temaExcel.length < 3 ||
+        !areaNombre ||
+        blacklist.includes(temaCheck) ||
+        blacklist.includes(areaCheck)
+      ) {
         stats.ignorados++;
         return;
       }
@@ -258,15 +284,19 @@ const obtenerAvance = async (req, res) => {
       capsDelTema.forEach((cap) =>
         cap.participantes.forEach((p) => {
           if (p.dni) dnisAsistentes.add(p.dni);
-        })
+        }),
       );
 
       const areasLista = Array.from(datosTema.areasSet);
       const trabajadoresObjetivo = trabajadores.filter((t) => {
         const areaT = normalizar(t.area);
         const catT = normalizar(t.categoria || "");
+        const cargoT = normalizar(t.cargo || "");
+
         return areasLista.some((areaPlanRaw) => {
           const areaPlan = normalizar(areaPlanRaw);
+
+          // MANTENEMOS TU DICCIONARIO COMPLETO
           const diccionario = {
             cifhs: [
               "cifhs",
@@ -374,31 +404,65 @@ const obtenerAvance = async (req, res) => {
               "administrativo",
             ],
           };
+
+          // 1. Si el área está en el diccionario, usa tus reglas estrictas de sinónimos
           if (diccionario[areaPlan]) {
-            return diccionario[areaPlan].some(
-              (sinonimo) => areaT.includes(sinonimo) || catT.includes(sinonimo)
+            const foundInDict = diccionario[areaPlan].some(
+              (sinonimo) =>
+                areaT.includes(sinonimo) ||
+                catT.includes(sinonimo) ||
+                cargoT.includes(sinonimo),
+            );
+            if (foundInDict) return true;
+          }
+
+          // 2. Intento Universal (SOLO UNIDIRECCIONAL - MÁS ESTRICTO)
+          if (areaPlan.length > 3) {
+            // 🟢 Subimos el mínimo de letras a 3 para evitar ruido
+
+            // PALABRAS PROHIBIDAS: Si el área detectada es muy genérica, la ignoramos aquí
+            const prohibidas = [
+              "area",
+              "areas",
+              "departamento",
+              "gerencia",
+              "jefatura",
+              "procesos",
+              "tema",
+            ];
+            if (prohibidas.includes(areaPlan)) return false;
+
+            // 🟢 LÓGICA CORREGIDA:
+            // Solo validamos si el Trabajador TIENE la especialidad del Plan.
+            // Eliminamos los 'areaPlan.includes(areaT)' que causaban el error masivo.
+            return (
+              areaT.includes(areaPlan) ||
+              catT.includes(areaPlan) ||
+              cargoT.includes(areaPlan)
             );
           }
-          return areaT.includes(areaPlan) || catT.includes(areaPlan);
+          return false;
         });
       });
 
       const metaTotal = trabajadoresObjetivo.length;
       const asistentesValidos = trabajadoresObjetivo.filter((t) =>
-        dnisAsistentes.has(t.dni)
+        dnisAsistentes.has(t.dni),
       );
       const faltantes = trabajadoresObjetivo.filter(
-        (t) => !dnisAsistentes.has(t.dni)
+        (t) => !dnisAsistentes.has(t.dni),
       );
+
       let avanceReal = asistentesValidos.length;
       if (metaTotal === 0 && dnisAsistentes.size > 0)
         avanceReal = dnisAsistentes.size;
+
       let porcentaje =
         metaTotal > 0
           ? (avanceReal / metaTotal) * 100
           : avanceReal > 0
-          ? 100
-          : 0;
+            ? 100
+            : 0;
 
       return {
         id_plan: datosTema.id_referencia,
@@ -422,7 +486,7 @@ const obtenerAvance = async (req, res) => {
     reporte.sort((a, b) => a.porcentaje - b.porcentaje);
     res.json(reporte);
   } catch (error) {
-    console.error("Error obteniendo avance:", error);
+    console.error("Error:", error);
     res.status(500).json({ error: "Error calculando avance" });
   }
 };
