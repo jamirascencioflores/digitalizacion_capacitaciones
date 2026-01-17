@@ -238,7 +238,7 @@ const subirPlanAnual = async (req, res) => {
   }
 };
 
-// --- 2. OBTENER AVANCE (Tu código original) ---
+// --- 2. OBTENER AVANCE (CON FILTROS ANTI-COLADOS) ---
 const obtenerAvance = async (req, res) => {
   try {
     const [planes, trabajadores, capacitaciones] = await Promise.all([
@@ -263,10 +263,12 @@ const obtenerAvance = async (req, res) => {
       }
       const entry = temasUnificados[temaNorm];
       if (plan.mes_programado) entry.mesesSet.add(plan.mes_programado);
+
       const objLimpio = plan.objetivo
         ? plan.objetivo.replace("Original: ", "")
         : "";
       if (objLimpio) entry.objetivosSet.add(objLimpio);
+
       if (plan.areas_objetivo)
         plan.areas_objetivo.split(",").forEach((a) => {
           if (a.trim()) entry.areasSet.add(a.trim());
@@ -275,6 +277,8 @@ const obtenerAvance = async (req, res) => {
 
     const reporte = Object.values(temasUnificados).map((datosTema) => {
       const temaNorm = normalizar(datosTema.tema);
+
+      // Cálculo de avance real (Capacitaciones ejecutadas)
       const capsDelTema = capacitaciones.filter((c) => {
         const temaCap = normalizar(c.tema_principal);
         return temaCap.includes(temaNorm) || temaNorm.includes(temaCap);
@@ -288,21 +292,63 @@ const obtenerAvance = async (req, res) => {
       );
 
       const areasLista = Array.from(datosTema.areasSet);
+
+      // 🟢 FILTRADO DE TRABAJADORES (META)
       const trabajadoresObjetivo = trabajadores.filter((t) => {
-        const areaT = normalizar(t.area);
+        const areaT = normalizar(t.area || "");
         const catT = normalizar(t.categoria || "");
         const cargoT = normalizar(t.cargo || "");
+
+        // 🔴 1. IDENTIFICACIÓN PREVIA: ¿Es de Operaciones?
+        const palabrasOperaciones = ["operaciones", "planta", "packing"];
+        const esDeOperaciones = palabrasOperaciones.some((op) =>
+          areaT.includes(op),
+        );
 
         return areasLista.some((areaPlanRaw) => {
           const areaPlan = normalizar(areaPlanRaw);
 
-          // MANTENEMOS TU DICCIONARIO COMPLETO
+          // 🔴 2. CUARENTENA DE OPERACIONES
+          // Si el trabajador es de Operaciones, SOLO entra si el Plan pide explícitamente Operaciones.
+          if (esDeOperaciones) {
+            const planPideOperaciones = palabrasOperaciones.some((op) =>
+              areaPlan.includes(op),
+            );
+            if (!planPideOperaciones) return false; // Bloqueado para cualquier otra área
+          }
+
+          // 🔴 3. FILTROS ANTI-COLADOS ESPECÍFICOS
+
+          // Regla: AGRICOLA (Excluye Riego, Taller, RRHH)
+          if (areaPlan.includes("agricola")) {
+            const prohibidos = [
+              "riego",
+              "taller",
+              "mecanico",
+              "mecanizacion",
+              "mantenimiento",
+              "rrhh",
+              "recursos humanos",
+              "operaciones",
+            ];
+            if (prohibidos.some((p) => areaT.includes(p))) return false;
+          }
+
+          // Regla: RIEGO (Excluye Agricola general, Taller, Operaciones)
+          if (areaPlan.includes("riego")) {
+            const prohibidos = ["operaciones", "agricola", "campo", "taller"];
+            if (prohibidos.some((p) => areaT.includes(p))) return false;
+          }
+
+          // 🔵 4. BÚSQUEDA POSITIVA (Si pasó los filtros)
+
           const diccionario = {
             cifhs: [
               "cifhs",
               "hostigamiento",
               "comite de intervencion",
               "genero",
+              "violencia",
             ],
             eds: ["eds", "desempeño social", "equipo de desempeño"],
             scsst: ["scsst", "comite de seguridad", "csst"],
@@ -310,102 +356,15 @@ const obtenerAvance = async (req, res) => {
               "recursos humanos",
               "personal",
               "rrhh",
-              "humanos",
-              "social",
-              "trabajadora social",
               "bienestar",
-            ],
-            sig: [
-              "sig",
-              "sistema de gestion",
-              "integrado",
-              "calidad",
-              "sso",
-              "seguridad y salud",
-            ],
-            logistica: [
-              "logistica",
-              "almacen",
-              "compras",
-              "adquisiciones",
-              "suministros",
-            ],
-            planificacion: [
-              "planificacion",
-              "planeamiento",
-              "control",
-              "proyectos",
-            ],
-            sanidad: ["sanidad", "evaluadores", "plagas"],
-            agricola: [
-              "agricola",
-              "campo",
-              "riego",
-              "cosecha",
-              "cultivo",
-              "fitosanidad",
-            ],
-            mecanizacion: [
-              "mecanizacion",
-              "maquinaria",
-              "taller",
-              "mantenimiento",
-            ],
-            mantenimiento: [
-              "mecanizacion",
-              "maquinaria",
-              "taller",
-              "mantenimiento",
-            ],
-            administrativos: [
-              "recursos humanos",
-              "personal",
-              "rrhh",
-              "humanos",
               "social",
-              "sig",
-              "sistema de gestion",
-              "integrado",
-              "calidad",
-              "sso",
-              "logistica",
-              "almacen",
-              "compras",
-              "adquisiciones",
-              "suministros",
-              "planificacion",
-              "planeamiento",
-              "control",
-              "proyectos",
-              "administracion",
-              "administrativo",
             ],
-            administracion: [
-              "recursos humanos",
-              "personal",
-              "rrhh",
-              "humanos",
-              "social",
-              "sig",
-              "sistema de gestion",
-              "integrado",
-              "calidad",
-              "sso",
-              "logistica",
-              "almacen",
-              "compras",
-              "adquisiciones",
-              "suministros",
-              "planificacion",
-              "planeamiento",
-              "control",
-              "proyectos",
-              "administracion",
-              "administrativo",
-            ],
+            sig: ["sig", "sistema de gestion", "integrado", "calidad", "sso"],
+            // Si quieres que el backend entienda "riego" como parte de "agricola" en otros contextos, agrégalo,
+            // pero las reglas de arriba (if) tienen prioridad y lo bloquearán si es necesario.
           };
 
-          // 1. Si el área está en el diccionario, usa tus reglas estrictas de sinónimos
+          // A. Por Diccionario
           if (diccionario[areaPlan]) {
             const foundInDict = diccionario[areaPlan].some(
               (sinonimo) =>
@@ -416,12 +375,9 @@ const obtenerAvance = async (req, res) => {
             if (foundInDict) return true;
           }
 
-          // 2. Intento Universal (SOLO UNIDIRECCIONAL - MÁS ESTRICTO)
+          // B. Por Coincidencia Directa (Unidireccional y Estricta)
           if (areaPlan.length > 3) {
-            // 🟢 Subimos el mínimo de letras a 3 para evitar ruido
-
-            // PALABRAS PROHIBIDAS: Si el área detectada es muy genérica, la ignoramos aquí
-            const prohibidas = [
+            const prohibidasGen = [
               "area",
               "areas",
               "departamento",
@@ -430,11 +386,8 @@ const obtenerAvance = async (req, res) => {
               "procesos",
               "tema",
             ];
-            if (prohibidas.includes(areaPlan)) return false;
+            if (prohibidasGen.includes(areaPlan)) return false;
 
-            // 🟢 LÓGICA CORREGIDA:
-            // Solo validamos si el Trabajador TIENE la especialidad del Plan.
-            // Eliminamos los 'areaPlan.includes(areaT)' que causaban el error masivo.
             return (
               areaT.includes(areaPlan) ||
               catT.includes(areaPlan) ||
