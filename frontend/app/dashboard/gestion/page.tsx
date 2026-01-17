@@ -1,3 +1,4 @@
+// frontend/app/dashboard/gestion/page.tsx
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
@@ -385,19 +386,25 @@ export default function GestionPage() {
                                 <div className="text-right flex flex-col items-end">
                                     <p className="text-[10px] text-gray-400 font-bold uppercase mb-1">Estado</p>
 
-                                    {item.meta_total === 0 ? (
-                                        // ETIQUETA AZUL PARA CONTRATISTAS
-                                        <div className="flex items-center gap-1.5 bg-blue-50 text-blue-700 px-3 py-1 rounded-md border border-blue-100">
-                                            <span className="text-sm font-bold">Contratista</span>
-                                        </div>
-                                    ) : item.faltantes.length > 0 ? (
+                                    {item.faltantes.length > 0 ? (
+                                        // 1. Si hay faltantes, mostramos el botón rojo de "Faltan #" sin importar la categoría
                                         <div className="flex items-center gap-1.5 bg-red-50 text-red-600 px-3 py-1 rounded-md border border-red-100">
                                             <AlertCircle size={14} />
                                             <span className="text-sm font-bold">Faltan {item.faltantes.length}</span>
                                         </div>
+                                    ) : item.meta_total === 0 && item.avance_real > 0 ? (
+                                        // 2. Si no hay meta pero sí hubo gente (Externos/Contratistas que sí asistieron)
+                                        <div className="flex items-center gap-1.5 bg-blue-50 text-blue-700 px-3 py-1 rounded-md border border-blue-100">
+                                            <span className="text-sm font-bold">Externo / OK</span>
+                                        </div>
+                                    ) : item.meta_total === 0 && item.avance_real === 0 ? (
+                                        // 3. Si no hay nada de nada
+                                        <div className="flex items-center gap-1.5 bg-gray-50 text-gray-400 px-3 py-1 rounded-md border border-gray-100">
+                                            <span className="text-sm font-bold">Contratista</span>
+                                        </div>
                                     ) : (
+                                        // 4. Si la meta se cumplió al 100%
                                         <div className="flex items-center gap-1.5 bg-green-50 text-green-700 px-3 py-1 rounded-md border border-green-100">
-                                            {/* Importar CheckCircle2 arriba si falta */}
                                             <span className="text-sm font-bold">Completado</span>
                                         </div>
                                     )}
