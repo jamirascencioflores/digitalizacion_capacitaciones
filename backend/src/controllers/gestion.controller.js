@@ -238,7 +238,7 @@ const subirPlanAnual = async (req, res) => {
   }
 };
 
-// --- 2. OBTENER AVANCE (CON FILTROS ANTI-COLADOS) ---
+// --- 2. OBTENER AVANCE (DICCIONARIO SINCRONIZADO + FILTROS) ---
 const obtenerAvance = async (req, res) => {
   try {
     const [planes, trabajadores, capacitaciones] = await Promise.all([
@@ -278,7 +278,6 @@ const obtenerAvance = async (req, res) => {
     const reporte = Object.values(temasUnificados).map((datosTema) => {
       const temaNorm = normalizar(datosTema.tema);
 
-      // Cálculo de avance real (Capacitaciones ejecutadas)
       const capsDelTema = capacitaciones.filter((c) => {
         const temaCap = normalizar(c.tema_principal);
         return temaCap.includes(temaNorm) || temaNorm.includes(temaCap);
@@ -293,13 +292,12 @@ const obtenerAvance = async (req, res) => {
 
       const areasLista = Array.from(datosTema.areasSet);
 
-      // 🟢 FILTRADO DE TRABAJADORES (META)
       const trabajadoresObjetivo = trabajadores.filter((t) => {
         const areaT = normalizar(t.area || "");
         const catT = normalizar(t.categoria || "");
         const cargoT = normalizar(t.cargo || "");
 
-        // 🔴 1. IDENTIFICACIÓN PREVIA: ¿Es de Operaciones?
+        // 1. IDENTIFICACIÓN DE OPERACIONES
         const palabrasOperaciones = ["operaciones", "planta", "packing"];
         const esDeOperaciones = palabrasOperaciones.some((op) =>
           areaT.includes(op),
@@ -308,16 +306,15 @@ const obtenerAvance = async (req, res) => {
         return areasLista.some((areaPlanRaw) => {
           const areaPlan = normalizar(areaPlanRaw);
 
-          // 🔴 2. CUARENTENA DE OPERACIONES
-          // Si el trabajador es de Operaciones, SOLO entra si el Plan pide explícitamente Operaciones.
+          // 🔴 2. FILTROS NEGATIVOS (Anti-Colados y Cuarentenas)
+
+          // Regla: CUARENTENA OPERACIONES
           if (esDeOperaciones) {
             const planPideOperaciones = palabrasOperaciones.some((op) =>
               areaPlan.includes(op),
             );
-            if (!planPideOperaciones) return false; // Bloqueado para cualquier otra área
+            if (!planPideOperaciones) return false;
           }
-
-          // 🔴 3. FILTROS ANTI-COLADOS ESPECÍFICOS
 
           // Regla: AGRICOLA (Excluye Riego, Taller, RRHH)
           if (areaPlan.includes("agricola")) {
@@ -340,9 +337,30 @@ const obtenerAvance = async (req, res) => {
             if (prohibidos.some((p) => areaT.includes(p))) return false;
           }
 
-          // 🔵 4. BÚSQUEDA POSITIVA (Si pasó los filtros)
-
+          // 🔵 3. DICCIONARIO PODEROSO (Igual al Frontend)
           const diccionario = {
+            // Administrativos / Gestión
+            rrhh: [
+              "recursos humanos",
+              "personal",
+              "rrhh",
+              "bienestar",
+              "social",
+            ],
+            sig: ["sig", "sistema de gestion", "integrado", "calidad", "sso"],
+            logistica: [
+              "logistica",
+              "almacen",
+              "compras",
+              "adquisiciones",
+              "suministros",
+            ],
+            planificacion: [
+              "planificacion",
+              "planeamiento",
+              "control",
+              "proyectos",
+            ],
             cifhs: [
               "cifhs",
               "hostigamiento",
@@ -352,16 +370,33 @@ const obtenerAvance = async (req, res) => {
             ],
             eds: ["eds", "desempeño social", "equipo de desempeño"],
             scsst: ["scsst", "comite de seguridad", "csst"],
-            rrhh: [
-              "recursos humanos",
-              "personal",
-              "rrhh",
-              "bienestar",
-              "social",
+
+            // Operativos / Campo
+            agricola: [
+              "agricola",
+              "campo",
+              "cosecha",
+              "cultivo",
+              "fitosanidad",
             ],
-            sig: ["sig", "sistema de gestion", "integrado", "calidad", "sso"],
-            // Si quieres que el backend entienda "riego" como parte de "agricola" en otros contextos, agrégalo,
-            // pero las reglas de arriba (if) tienen prioridad y lo bloquearán si es necesario.
+            sanidad: ["sanidad", "evaluadores", "plagas"],
+            riego: ["riego"],
+            operaciones: ["operaciones", "planta", "packing"],
+
+            // 🟢 AQUÍ ESTÁ EL ARREGLO PARA MANTENIMIENTO:
+            mantenimiento: [
+              "mantenimiento",
+              "taller",
+              "mecanizacion",
+              "maquinaria",
+              "mecanico",
+            ],
+            mecanizacion: [
+              "mecanizacion",
+              "taller",
+              "mantenimiento",
+              "maquinaria",
+            ],
           };
 
           // A. Por Diccionario
@@ -375,7 +410,7 @@ const obtenerAvance = async (req, res) => {
             if (foundInDict) return true;
           }
 
-          // B. Por Coincidencia Directa (Unidireccional y Estricta)
+          // B. Por Coincidencia Directa (Respaldo)
           if (areaPlan.length > 3) {
             const prohibidasGen = [
               "area",
