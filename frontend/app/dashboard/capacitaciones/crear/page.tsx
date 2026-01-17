@@ -433,62 +433,93 @@ export default function CrearCapacitacionPage() {
         menu: (base: Record<string, unknown>) => ({ ...base, zIndex: 9999 })
     };
 
+    // Reemplaza tu función cargarTrabajadoresDeArea con esta versión mejorada:
+
     const cargarTrabajadoresDeArea = () => {
         const areaObjetivo = watch('area_objetivo');
         if (!areaObjetivo) {
-            alert("Primero selecciona un tema para saber a qué áreas cargar.");
+            alert("Primero selecciona un tema.");
             return;
         }
 
         const areasBusqueda = areaObjetivo.split(',').map(a => normalizar(a.trim()));
 
-        // 🟢 DICCIONARIO DE SINÓNIMOS (Para cruzar datos del Excel con el JSON de trabajadores)
         const diccionario: Record<string, string[]> = {
-            "rrhh": ["recursos humanos", "personal", "rrhh", "social"],
+            "rrhh": ["recursos humanos", "personal", "rrhh", "social", "bienestar"],
             "sig": ["sig", "sistema de gestion", "integrado", "calidad", "sso"],
-            "logistica": ["logistica", "almacen", "compras", "adquisiciones"],
-            "planificacion": ["planificacion", "planeamiento", "control"],
+            "logistica": ["logistica", "almacen", "compras", "adquisiciones", "suministros"],
+            "planificacion": ["planificacion", "planeamiento", "control", "proyectos"],
             "mantenimiento": ["mecanizacion", "taller", "mantenimiento", "maquinaria"],
             "mecanizacion": ["mecanizacion", "taller", "mantenimiento"],
-            "cifhs": ["cifhs", "hostigamiento", "comite", "genero"],
+            "cifhs": ["cifhs", "hostigamiento", "comite", "genero", "violencia"],
             "eds": ["eds", "desempeño social"],
-            "scsst": ["scsst", "comite", "seguridad y salud", "csst"]
+            "scsst": ["scsst", "comite", "seguridad y salud", "csst"],
+            "agricola": ["agricola", "campo", "cosecha", "cultivo", "fitosanidad"],
+            "sanidad": ["sanidad", "evaluadores", "plagas"],
+            "riego": ["riego"],
+            "operaciones": ["operaciones", "planta", "packing"]
         };
 
         const sugeridos = listaTrabajadores.filter(t => {
             const areaT = normalizar(t.area);
             const catT = normalizar(t.categoria || "");
+            const cargoT = normalizar(t.cargo || "");
+
+            // 🛑 REGLA DE ORO: CUARENTENA DE OPERACIONES
+            // Definimos qué palabras identifican al área de Operaciones
+            const palabrasOperaciones = ["operaciones", "planta", "packing"];
+
+            // ¿El trabajador pertenece REALMENTE a Operaciones?
+            const esDeOperaciones = palabrasOperaciones.some(op => areaT.includes(op));
+
+            // Iteramos sobre las áreas que el usuario pidió
             return areasBusqueda.some(aPlan => {
-                // Si el área del Excel tiene sinónimos definidos
+
+                // --- 1. FILTRO BLINDADO PARA OPERACIONES ---
+                // Si el trabajador es de Operaciones, PERO el área que estamos evaluando en este momento del bucle
+                // NO es "Operaciones" (ni sus sinónimos), entonces LO BLOQUEAMOS.
+                // Esto evita que un "Asistente Logístico" de "Operaciones" entre cuando pedimos "Logística".
+                if (esDeOperaciones) {
+                    const pideOperaciones = palabrasOperaciones.some(op => aPlan.includes(op));
+                    if (!pideOperaciones) {
+                        return false; // ¡ADIÓS! No te queremos aquí si no te llamamos.
+                    }
+                }
+
+                // --- 2. FILTROS ESPECÍFICOS (Agricola vs Riego) ---
+                if (aPlan.includes("agricola")) {
+                    const prohibidos = ["riego", "taller", "mecanico", "mecanizacion", "mantenimiento", "rrhh", "recursos humanos"];
+                    if (prohibidos.some(p => areaT.includes(p))) return false;
+                }
+                if (aPlan.includes("riego")) {
+                    const prohibidos = ["agricola", "campo", "taller"];
+                    if (prohibidos.some(p => areaT.includes(p))) return false;
+                }
+
+                // --- 3. Lógica de Coincidencia (Si sobrevivió a los filtros) ---
                 if (diccionario[aPlan]) {
                     return diccionario[aPlan].some(sinonimo =>
-                        areaT.includes(sinonimo) || catT.includes(sinonimo)
+                        areaT.includes(sinonimo) || catT.includes(sinonimo) || cargoT.includes(sinonimo)
                     );
                 }
-                // Búsqueda normal si no está en el diccionario
-                return areaT.includes(aPlan) || catT.includes(aPlan);
+                return areaT.includes(aPlan) || catT.includes(aPlan) || cargoT.includes(aPlan);
             });
         });
 
         if (sugeridos.length === 0) {
-            alert("No se encontraron trabajadores para: " + areaObjetivo);
+            alert(`No se encontraron trabajadores para: "${areaObjetivo}".`);
             return;
         }
 
-        // 🟢 LÓGICA DE REEMPLAZO O AGREGADO
+        // --- LÓGICA DE LLENADO ---
         const hayDatosPrevios = fields.length > 0 && (fields.length > 1 || participantesWatch[0].dni !== "");
-
         let debeReemplazar = false;
 
         if (hayDatosPrevios) {
-            // Si ya hay gente, preguntamos qué hacer
-            if (confirm(`Ya hay personas en la lista.\n\n[ACEPTAR] = Reemplazar por los ${sugeridos.length} nuevos.\n[CANCELAR] = Agregar al final.`)) {
-                debeReemplazar = true;
-            }
+            if (confirm(`Se encontraron ${sugeridos.length} personas.\n\n[ACEPTAR] = Reemplazar.\n[CANCELAR] = Agregar.`)) debeReemplazar = true;
         } else {
-            // Si está vacía, solo pedimos confirmación simple
             if (!confirm(`Se detectaron ${sugeridos.length} trabajadores. ¿Cargar ahora?`)) return;
-            debeReemplazar = true; // Reemplazamos la fila vacía inicial
+            debeReemplazar = true;
         }
 
         const nuevasFilas = sugeridos.map((t, i) => ({
@@ -502,11 +533,8 @@ export default function CrearCapacitacionPage() {
             firma_url: t.firma_url || ''
         }));
 
-        if (debeReemplazar) {
-            replace(nuevasFilas); // Borra todo y pone lo nuevo
-        } else {
-            append(nuevasFilas); // Agrega al final
-        }
+        if (debeReemplazar) replace(nuevasFilas);
+        else append(nuevasFilas);
     };
 
     return (

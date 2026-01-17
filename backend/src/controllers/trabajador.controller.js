@@ -218,7 +218,13 @@ const importarExcelInteligente = async (req, res) => {
     const idxPaterno = findCol(["paterno"]); // Columna específica "Paterno"
     const idxMaterno = findCol(["materno"]); // Columna específica "Materno"
 
-    const idxArea = findCol(["area", "unidad", "departamento", "seccion"]);
+    const idxArea = findCol([
+      "area",
+      "unidad",
+      "departamento",
+      "seccion",
+      "subplanilla",
+    ]);
     const idxCargo = findCol(["cargo", "puesto", "ocupacion"]);
     const idxGenero = findCol(["genero", "sexo"]);
     const idxCategoria = findCol(["categoria", "grupo"]);
