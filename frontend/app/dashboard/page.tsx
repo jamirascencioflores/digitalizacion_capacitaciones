@@ -1,9 +1,9 @@
-//
+// frontend/app/dashboard/page.tsx
 'use client';
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation'; // <--- 1. Importamos useRouter
+import { useRouter } from 'next/navigation';
 import api from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
 import {
@@ -15,7 +15,9 @@ import {
     MapPin,
     UserCheck,
     Inbox,
-    BarChart3
+    BarChart3,
+    ShieldAlert,
+    ChevronRight
 } from 'lucide-react';
 
 interface CapacitacionResumen {
@@ -47,19 +49,23 @@ interface DistributionItem {
 
 export default function DashboardPage() {
     const { user, loading: authLoading } = useAuth();
-    const router = useRouter(); // <--- 2. Instanciamos el router
+    const router = useRouter();
 
-    // ESTADOS
+    // ESTADOS DE DATOS
     const [stats, setStats] = useState<DashboardStats>({ totalCapacitaciones: 0, totalParticipantes: 0, promedioAsistencia: '0' });
     const [capacitaciones, setCapacitaciones] = useState<CapacitacionResumen[]>([]);
     const [distribution, setDistribution] = useState<DistributionItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [busqueda, setBusqueda] = useState('');
 
+    // ESTADO PARA ALERTAS EN TIEMPO REAL
+    const [alertasPendientes, setAlertasPendientes] = useState(0);
+
     const userRole = user?.rol?.trim().toLowerCase();
 
+    // 1. EFECTO DE CARGA INICIAL (Datos pesados: Gráficos y Tablas)
     useEffect(() => {
-        const fetchData = async () => {
+        const fetchInitialData = async () => {
             try {
                 const [resStats, resCaps, resDist] = await Promise.all([
                     api.get('/dashboard/stats'),
@@ -71,13 +77,41 @@ export default function DashboardPage() {
                 setCapacitaciones(resCaps.data);
                 setDistribution(resDist.data);
             } catch (error) {
-                console.error('Error cargando dashboard', error);
+                console.error('Error cargando datos del dashboard', error);
             } finally {
                 setLoading(false);
             }
         };
-        fetchData();
-    }, []);
+
+        if (userRole) {
+            fetchInitialData();
+        }
+    }, [userRole]);
+
+    // 2. EFECTO DE POLLING (Sondeo de Alertas cada 30s)
+    useEffect(() => {
+        const verificarAlertas = async () => {
+            if (userRole !== 'administrador') return;
+
+            try {
+                const res = await api.get('/usuarios/solicitudes');
+                setAlertasPendientes(res.data.length);
+            } catch (error) {
+                console.error("Error verificando alertas en segundo plano", error);
+            }
+        };
+
+        if (userRole === 'administrador') {
+            // Ejecutar inmediatamente al entrar
+            verificarAlertas();
+
+            // Configurar intervalo de 30 segundos
+            const intervalo = setInterval(verificarAlertas, 30000);
+
+            // Limpieza al salir de la página (Detiene el reloj)
+            return () => clearInterval(intervalo);
+        }
+    }, [userRole]);
 
     // FILTRO DE BÚSQUEDA
     const capacitacionesFiltradas = capacitaciones.filter((c) => {
@@ -119,13 +153,36 @@ export default function DashboardPage() {
                 )}
             </div>
 
+            {/* BANNER DE ALERTAS AUTOMÁTICO (SOLO ADMIN) */}
+            {userRole === 'administrador' && alertasPendientes > 0 && (
+                <div className="bg-red-50 border border-red-100 rounded-xl p-4 flex flex-col md:flex-row items-center justify-between gap-4 animate-in slide-in-from-top-2 shadow-sm transition-all duration-500">
+                    <div className="flex items-center gap-4">
+                        <div className="bg-red-100 p-3 rounded-full text-red-600 animate-pulse">
+                            <ShieldAlert size={24} />
+                        </div>
+                        <div>
+                            <h3 className="font-bold text-red-900 text-lg">Acción Requerida</h3>
+                            <p className="text-red-700 text-sm">
+                                Hay <span className="font-bold">{alertasPendientes} usuario(s)</span> solicitando restablecer su contraseña.
+                            </p>
+                        </div>
+                    </div>
+                    <Link
+                        href="/dashboard/alertas"
+                        className="whitespace-nowrap bg-red-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-red-700 transition flex items-center gap-2 shadow-sm hover:shadow-md"
+                    >
+                        Atender Solicitudes <ChevronRight size={18} />
+                    </Link>
+                </div>
+            )}
+
             {/* --- TARJETAS KPI --- */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition">
                     <div className="flex justify-between items-start">
                         <div>
                             <p className="text-gray-500 text-sm font-medium">Capacitaciones Año</p>
-                            <h3 className="text-3xl font-bold text-gray-800 mt-2">{stats.totalCapacitaciones}</h3>                        </div>
+                            <h3 className="text-3xl font-bold text-gray-800 mt-2">{stats.totalCapacitaciones}</h3>            </div>
                         <div className="p-2 bg-blue-50 text-green-600 rounded-lg"><FileText size={20} /></div>
                     </div>
                 </div>
@@ -265,7 +322,6 @@ export default function DashboardPage() {
                                             <span className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full font-bold text-xs">{cap.total_asistentes}</span>
                                         </td>
 
-                                        {/* --- CAMBIO PRINCIPAL AQUÍ: BOTÓN DE ACCIÓN --- */}
                                         <td className="px-6 py-4 text-right">
                                             <button
                                                 onClick={() => router.push(`/dashboard/capacitaciones/${cap.id_capacitacion}`)}

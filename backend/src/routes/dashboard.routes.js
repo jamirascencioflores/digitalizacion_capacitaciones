@@ -2,24 +2,28 @@
 const { Router } = require("express");
 const router = Router();
 
-// IMPORTANTE: Aquí importamos el middleware directamente
-const authMiddleware = require("../middlewares/auth.middleware");
+// 1. Importamos el middleware con llaves (CORRECTO)
+const { verificarToken } = require("../middlewares/auth.middleware");
 
-// Importamos el controlador
+// 2. Importamos el controlador
 const controller = require("../controllers/dashboard.controller");
 
+// --- DEBUG ---
 console.log("--- DEBUG DASHBOARD ---");
 console.log(
   "AuthMiddleware es función?:",
-  typeof authMiddleware === "function" ? "SI" : "NO (ERROR)"
+  typeof verificarToken === "function" ? "SI" : "NO (ERROR)",
 );
+
+// Verificamos que las funciones del controlador existan
+// (Asegúrate de que en dashboard.controller.js se llamen getStats, getRecent, etc.)
 console.log("getStats:", controller.getStats ? "OK" : "FALTA");
 console.log("getRecent:", controller.getRecent ? "OK" : "FALTA");
 console.log("-----------------------");
 
-// Definir rutas
-router.get("/stats", authMiddleware, controller.getStats);
-router.get("/recent", authMiddleware, controller.getRecent);
-router.get("/distribution", authMiddleware, controller.getDistribution);
+// 3. Definir rutas usando 'verificarToken'
+router.get("/stats", verificarToken, controller.getStats);
+router.get("/recent", verificarToken, controller.getRecent);
+router.get("/distribution", verificarToken, controller.getDistribution);
 
 module.exports = router;

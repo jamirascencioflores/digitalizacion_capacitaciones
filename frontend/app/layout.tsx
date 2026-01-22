@@ -2,7 +2,8 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import { AuthProvider } from "@/context/AuthContext"; // ✅ 1. IMPORTAR ESTO
+import { AuthProvider } from "@/context/AuthContext";
+import { AlertasProvider } from '@/context/AlertasContext'; // Importamos
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -20,9 +21,11 @@ export default function RootLayout({
     <html lang="es">
       <body className={inter.className}>
 
-        {/* ✅ 2. RODEAMOS EL CHILDREN CON EL PROVIDER */}
+        {/* 🟢 CORRECCIÓN: Un Provider dentro del otro */}
         <AuthProvider>
-          {children}
+          <AlertasProvider>
+            {children}
+          </AlertasProvider>
         </AuthProvider>
 
       </body>

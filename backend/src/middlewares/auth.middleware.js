@@ -1,7 +1,8 @@
 // backend/src/middlewares/auth.middleware.js
 const jwt = require("jsonwebtoken");
 
-const authMiddleware = (req, res, next) => {
+// 1. Cambiamos el nombre de 'authMiddleware' a 'verificarToken'
+const verificarToken = (req, res, next) => {
   const authHeader = req.headers["authorization"];
   const token = authHeader && authHeader.split(" ")[1];
 
@@ -10,9 +11,7 @@ const authMiddleware = (req, res, next) => {
   }
 
   try {
-    // 🟢 CORRECCIÓN: Usar la misma variable de entorno que el Login
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
     req.user = decoded;
     next();
   } catch (error) {
@@ -20,4 +19,5 @@ const authMiddleware = (req, res, next) => {
   }
 };
 
-module.exports = authMiddleware;
+// 2. IMPORTANTE: Exportamos como OBJETO (con llaves)
+module.exports = { verificarToken };

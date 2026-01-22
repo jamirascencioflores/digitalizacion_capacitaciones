@@ -1,21 +1,33 @@
-// backend/src/routes/usuario.routes.js
 const express = require("express");
 const router = express.Router();
-const usuarioController = require("../controllers/usuario.controller");
+const { verificarToken } = require("../middlewares/auth.middleware");
 
-// Prefijo en server.js: /api/usuarios
+// 1. IMPORTAMOS TODAS LAS FUNCIONES DESGLOSADAS
+const {
+  obtenerUsuarios,
+  registrarUsuario,
+  actualizarUsuario,
+  eliminarUsuario,
+  obtenerSolicitudesReset,
+  resetearContrasena,
+} = require("../controllers/usuario.controller");
 
-// 1. Obtener lista (GET /api/usuarios)
-router.get("/", usuarioController.obtenerUsuarios);
+console.log("--- DEBUG CONTROLADOR ---");
+console.log("obtenerUsuarios:", obtenerUsuarios); // Debería salir [AsyncFunction]
+console.log("obtenerSolicitudesReset:", obtenerSolicitudesReset); // Si sale 'undefined', algo raro pasa.
+console.log("-------------------------");
 
-// 2. Crear nuevo - CORREGIDO (POST /api/usuarios)
-// Antes decía "/login", cámbialo a "/" para que sea el estándar
-router.post("/", usuarioController.registrarUsuario);
+// Prefijo: /api/usuarios
+// --- RUTAS ESTÁTICAS (Van primero para evitar conflictos) ---
+router.get("/solicitudes", verificarToken, obtenerSolicitudesReset);
 
-// 3. Editar (PUT /api/usuarios/:id)
-router.put("/:id", usuarioController.actualizarUsuario);
+// --- RUTAS CRUD ---
+router.get("/", obtenerUsuarios);
+router.post("/", registrarUsuario); // Verifica si tu función se llama crearUsuario
 
-// 4. Eliminar (DELETE /api/usuarios/:id)
-router.delete("/:id", usuarioController.eliminarUsuario);
+// --- RUTAS DINÁMICAS (Con :id) ---
+router.put("/:id", actualizarUsuario); // Verifica si tu función se llama editarUsuario
+router.delete("/:id", eliminarUsuario);
+router.post("/reset/:id", verificarToken, resetearContrasena);
 
 module.exports = router;

@@ -1,6 +1,8 @@
+// backend/src/routes/upload.routes.js
 const { Router } = require("express");
 const { upload, subirArchivo } = require("../controllers/upload.controller");
-const verificarToken = require("../middlewares/auth.middleware"); // Proteger la ruta
+
+const { verificarToken } = require("../middlewares/auth.middleware");
 
 const router = Router();
 
