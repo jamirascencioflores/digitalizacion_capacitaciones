@@ -67,9 +67,9 @@ model capacitaciones {
   total_horas           String   @db.VarChar(50)
 
   expositor_nombre      String   @db.VarChar(150)
-  expositor_dni         String   @db.VarChar(20)
-  expositor_institucion String?  @db.VarChar(150)
+  expositor_dni         String   @db.VarChar(20)  
   expositor_firma       String?  @db.Text
+  institucion_procedencia String?  @db.VarChar(150)
   
   revision_usada        String?  @db.VarChar(10)
   creado_por            Int
@@ -94,7 +94,7 @@ model participantes {
   area              String @db.VarChar(100)
   cargo             String @db.VarChar(100)
   apellidos_nombres String @db.VarChar(255)
-  firma             String? @db.Text
+  firma_url         String? @db.Text
   
   genero            String? @db.VarChar(10)
   condicion         String? @db.VarChar(50)
@@ -108,8 +108,9 @@ model participantes {
 model documentos {
   id_documento    Int      @id @default(autoincrement())
   id_capacitacion Int
-  tipo            String   @db.VarChar(30)
-  url             String   @db.VarChar(255)
+  tipo            String   @db.VarChar(50) // Ej: "EVIDENCIA", "ACTA"
+  url             String   @db.Text 
+  nombre_archivo  String?  @db.VarChar(255) 
   fecha_generado  DateTime @default(now())
 
   capacitaciones  capacitaciones @relation(fields: [id_capacitacion], references: [id_capacitacion], onDelete: Cascade)

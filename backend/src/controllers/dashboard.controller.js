@@ -57,7 +57,7 @@ const getStats = async (req, res) => {
     let cobertura = 0;
     if (totalTrabajadores > 0) {
       cobertura = ((personasUnicas.length / totalTrabajadores) * 100).toFixed(
-        1
+        1,
       );
     }
 
@@ -167,42 +167,51 @@ const getDistribution = async (req, res) => {
 
       // C. Iteramos las áreas objetivo DE ESTE TEMA
       datosTema.areasSet.forEach((areaNombreOriginal) => {
-        // Inicializamos el área en el reporte global si no existe
-        if (!areaStats[areaNombreOriginal]) {
-          areaStats[areaNombreOriginal] = { meta: 0, real: 0 };
+        // 1. Normalizamos la llave para agrupar en el gráfico
+        let llave = areaNombreOriginal.trim().toUpperCase();
+
+        // 🟢 EL PUENTE: Si el plan dice Mantenimiento o Mecanización, unificamos a Taller
+        if (
+          llave.includes("MANTENIMIENTO") ||
+          llave.includes("MECANIZACION") ||
+          llave.includes("TALLER")
+        ) {
+          llave = "TALLER - MECANIZACIÓN";
         }
 
-        // --- CÁLCULO DE META (Trabajadores Activos del Área) ---
-        const areaBuscar = normalizar(areaNombreOriginal);
-        const trabajadoresDelArea = trabajadores.filter((t) =>
-          normalizar(t.area).includes(areaBuscar)
-        );
+        if (!areaStats[llave]) {
+          areaStats[llave] = { nombre: llave, meta: 0, real: 0 };
+        }
+
+        // 2. Definimos qué buscar en la tabla de trabajadores
+        // Si la llave es Taller, buscamos trabajadores que sean Taller o Mantenimiento
+        const esTallerUbicado = llave === "TALLER - MECANIZACIÓN";
+
+        const trabajadoresDelArea = trabajadores.filter((t) => {
+          const areaT = normalizar(t.area);
+          if (esTallerUbicado) {
+            return (
+              areaT.includes("taller") ||
+              areaT.includes("mantenimiento") ||
+              areaT.includes("mecanizacion")
+            );
+          }
+          return areaT.includes(normalizar(areaNombreOriginal));
+        });
+
         const cantidadTrabajadores = trabajadoresDelArea.length;
 
-        // Sumamos a la META GLOBAL del área
-        // (Si Agrícola tiene 13 trabajadores, se suman 13 puntos de meta por este tema)
-        areaStats[areaNombreOriginal].meta += cantidadTrabajadores;
-
-        // --- CÁLCULO REAL (Trabajadores del Área que cumplieron este tema) ---
-        const cumplidos = trabajadoresDelArea.filter((t) =>
-          dnisCumplieronTema.has(t.dni)
+        // 3. Sumamos a la estadística
+        areaStats[llave].meta += cantidadTrabajadores;
+        areaStats[llave].real += trabajadoresDelArea.filter((t) =>
+          dnisCumplieronTema.has(t.dni),
         ).length;
-
-        areaStats[areaNombreOriginal].real += cumplidos;
-
-        // --- MANEJO DE EXTERNOS (Meta 0) ---
-        if (cantidadTrabajadores === 0 && dnisCumplieronTema.size > 0) {
-          // Si hubo actividad en este tema, sumamos 1 punto simbólico al real
-          if (capsDelTema.length > 0) {
-            areaStats[areaNombreOriginal].real += 1;
-          }
-        }
       });
     }
 
     // --- PASO 3: FORMATEAR ---
-    const reporte = Object.keys(areaStats).map((areaKey) => {
-      const data = areaStats[areaKey];
+    const reporte = Object.keys(areaStats).map((llave) => {
+      const data = areaStats[llave];
       const esExterno = data.meta === 0;
 
       let porcentaje = 0;
@@ -214,7 +223,7 @@ const getDistribution = async (req, res) => {
       }
 
       return {
-        area: areaKey,
+        area: data.nombre, // 🟢 Usamos el nombre estético unificado
         total: data.meta,
         capacitados: data.real,
         avance: Number(porcentaje),

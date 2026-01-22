@@ -1,3 +1,5 @@
+//backend/services/pdf.service.ts
+
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import api from "./api";
@@ -43,7 +45,7 @@ interface CapacitacionPDF {
   centros: string;
   expositor_nombre: string;
   expositor_dni: string;
-  expositor_institucion: string;
+  institucion_procedencia: string;
   expositor_firma?: string;
   sede_empresa: string;
   revision_usada?: string;
@@ -56,23 +58,56 @@ interface CapacitacionPDF {
 
 // --- UTILIDAD: CONVERTIR URL A BASE64 ---
 const getBase64FromUrl = async (url: string): Promise<string | null> => {
-  if (!url) return null;
-  if (url.startsWith("data:")) return url;
+  // 1. Validaciones iniciales para evitar datos basura
+  if (
+    !url ||
+    typeof url !== "string" ||
+    url.includes("[object Object]") ||
+    url === "null"
+  ) {
+    return null;
+  }
 
-  // Si la URL comienza con http (ej: window.location.origin), la usa tal cual.
-  // Si no, asume que es del backend y le pega el localhost:4000.
-  const fullUrl = url.startsWith("http") ? url : `http://localhost:4000${url}`;
+  // 2. Construcción de la URL completa
+  const fullUrl = url.startsWith("http")
+    ? url
+    : `${process.env.NEXT_PUBLIC_API_URL?.replace("/api", "") || "http://localhost:4000"}${url.startsWith("/") ? url : "/" + url}`;
 
   try {
-    const res = await fetch(fullUrl);
+    // 3. Petición con configuración de seguridad para Cloudinary
+    const res = await fetch(fullUrl, {
+      method: "GET",
+      mode: "cors", // Importante para recursos externos como Cloudinary
+      credentials: "omit", // Evita enviar cookies que puedan causar conflictos de CORS
+      headers: {
+        Accept: "image/*",
+      },
+    });
+
+    if (!res.ok) {
+      console.warn(
+        `No se pudo cargar la imagen: ${res.status} ${res.statusText}`,
+      );
+      return null;
+    }
+
     const blob = await res.blob();
+
+    // 4. Conversión a Base64
     return new Promise((resolve) => {
       const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result as string);
+      reader.onloadend = () => {
+        const base64data = reader.result as string;
+        resolve(base64data);
+      };
+      reader.onerror = () => {
+        console.error("Error al leer el blob de la imagen");
+        resolve(null);
+      };
       reader.readAsDataURL(blob);
     });
   } catch (error) {
-    console.error("Error cargando imagen:", fullUrl, error);
+    console.error("Error crítico cargando imagen para PDF:", fullUrl, error);
     return null;
   }
 };
@@ -99,7 +134,7 @@ const generarPortada = (
   doc: jsPDF,
   data: CapacitacionPDF,
   empresa: EmpresaConfig,
-  logoBase64: string | null // 🟢 Recibe el logo aquí
+  logoBase64: string | null, // 🟢 Recibe el logo aquí
 ) => {
   const pageWidth = doc.internal.pageSize.width;
   const marginX = 25;
@@ -148,7 +183,7 @@ const generarPortada = (
   drawHeaderField("Tema :", data.tema_principal);
   drawHeaderField(
     "Fecha :",
-    data.fecha ? new Date(data.fecha).toLocaleDateString() : "-"
+    data.fecha ? new Date(data.fecha).toLocaleDateString() : "-",
   );
 
   currentY += 5;
@@ -163,12 +198,12 @@ const generarPortada = (
   doc.text(
     `Por el presente adjunto evidencia de capacitación realizada el día ${fechaFormatted}.`,
     marginX,
-    currentY
+    currentY,
   );
   currentY += 15;
 
   const horarioStr = `${formatTime(data.hora_inicio)} - ${formatTime(
-    data.hora_termino
+    data.hora_termino,
   )}`;
   drawHeaderField("Horario:", horarioStr);
   drawHeaderField("Duración:", `${data.total_horas} horas`);
@@ -183,7 +218,7 @@ const generarPortada = (
   doc.setFont("helvetica", "normal");
   const objLines = doc.splitTextToSize(
     data.objetivo || "Sin objetivo.",
-    contentWidth
+    contentWidth,
   );
   doc.text(objLines, marginX, currentY);
   currentY += objLines.length * 7 + 5;
@@ -194,7 +229,7 @@ const generarPortada = (
   doc.setFont("helvetica", "normal");
   const temarioLines = doc.splitTextToSize(
     data.temario || "Sin temario.",
-    contentWidth
+    contentWidth,
   );
   doc.text(temarioLines, marginX, currentY);
   currentY += temarioLines.length * 7 + 15;
@@ -206,7 +241,7 @@ const generarPortada = (
   doc.text(
     `Total Asistentes:  ${t}   (Hombres: ${h} / Mujeres: ${m})`,
     marginX,
-    currentY
+    currentY,
   );
 
   doc.addPage();
@@ -215,7 +250,7 @@ const generarPortada = (
 // --- FUNCIÓN PRINCIPAL ---
 export const generarPDFUniversal = async (
   data: CapacitacionPDF,
-  empresa: EmpresaConfig
+  empresa: EmpresaConfig,
 ) => {
   const doc = new jsPDF();
 
@@ -255,7 +290,7 @@ export const generarPDFUniversal = async (
         firmaBase64 = await getBase64FromUrl(p.firma_url);
       }
       return { ...p, firmaBase64 };
-    })
+    }),
   );
 
   let expositorFirmaBase64 = null;
@@ -315,7 +350,7 @@ export const generarPDFUniversal = async (
     "ACTA DE CAPACITACIÓN",
     colCenterX + colCenterWidth / 2,
     currentY + 10,
-    { align: "center" }
+    { align: "center" },
   );
 
   const colRightX = colCenterX + colCenterWidth + 5;
@@ -363,7 +398,7 @@ export const generarPDFUniversal = async (
   doc.text(
     `${empresa.actividad_economica || "Principal - 0150"}`,
     colRightX + 28,
-    rightY
+    rightY,
   );
 
   currentY = Math.max(currentY + 26 + alturaDir, rightY + 5);
@@ -384,7 +419,7 @@ export const generarPDFUniversal = async (
       marginLeft,
       currentY + height,
       pageWidth - marginLeft,
-      currentY + height
+      currentY + height,
     );
     currentY += height + 2;
   };
@@ -401,7 +436,7 @@ export const generarPDFUniversal = async (
     y: number,
     items: { label: string; checked: boolean }[],
     startX: number,
-    spacing: number = 4
+    spacing: number = 4,
   ) => {
     let x = startX;
     doc.setFontSize(8);
@@ -432,7 +467,7 @@ export const generarPDFUniversal = async (
     currentY,
     acts.map((a) => ({ label: a, checked: data.actividad === a })),
     marginLeft + 25,
-    3
+    3,
   );
 
   const acX = marginLeft + 134;
@@ -444,7 +479,7 @@ export const generarPDFUniversal = async (
       { label: "SI", checked: data.accion_correctiva === "SI" },
       { label: "NO", checked: data.accion_correctiva === "NO" },
     ],
-    acX + 35
+    acX + 35,
   );
   currentY += rowHeight;
 
@@ -457,7 +492,7 @@ export const generarPDFUniversal = async (
       { label: "Interna", checked: data.modalidad === "Interna" },
       { label: "Externa", checked: data.modalidad === "Externa" },
     ],
-    marginLeft + 25
+    marginLeft + 25,
   );
   currentY += rowHeight;
 
@@ -476,7 +511,7 @@ export const generarPDFUniversal = async (
     currentY,
     cats.map((c) => ({ label: c, checked: data.categoria === c })),
     marginLeft + 22,
-    6
+    6,
   );
   currentY += rowHeight;
 
@@ -487,17 +522,17 @@ export const generarPDFUniversal = async (
   doc.text(
     `INICIO: ${formatTime(data.hora_inicio)}`,
     marginLeft + 50,
-    currentY + 4.5
+    currentY + 4.5,
   );
   doc.text(
     `TÉRMINO: ${formatTime(data.hora_termino)}`,
     marginLeft + 90,
-    currentY + 4.5
+    currentY + 4.5,
   );
   doc.text(
     `TOTAL HORAS: ${data.total_horas}`,
     marginLeft + 140,
-    currentY + 4.5
+    currentY + 4.5,
   );
   currentY += rowHeight;
 
@@ -514,7 +549,7 @@ export const generarPDFUniversal = async (
   drawCheckRow(
     currentY,
     centrosList.map((c) => ({ label: c, checked: data.centros === c })),
-    marginLeft + 25
+    marginLeft + 25,
   );
   currentY += rowHeight + 5;
 
@@ -587,7 +622,7 @@ export const generarPDFUniversal = async (
               x,
               y,
               drawWidth,
-              drawHeight
+              drawHeight,
             );
           } catch {
             // vacío
@@ -621,7 +656,7 @@ export const generarPDFUniversal = async (
         firmaX + 10,
         currentY - 20,
         50,
-        20
+        20,
       );
     } catch (e) {
       console.error(e);
@@ -635,16 +670,16 @@ export const generarPDFUniversal = async (
     data.expositor_nombre || "Nombre Expositor",
     pageWidth / 2,
     currentY + 5,
-    { align: "center" }
+    { align: "center" },
   );
   doc.text(`DNI: ${data.expositor_dni || "-"}`, pageWidth / 2, currentY + 9, {
     align: "center",
   });
   doc.text(
-    data.expositor_institucion || "Institución",
+    data.institucion_procedencia || "Institución",
     pageWidth / 2,
     currentY + 13,
-    { align: "center" }
+    { align: "center" },
   );
   doc.setFont("helvetica", "bold");
   doc.text("FIRMA DEL EXPOSITOR / ENTRENADOR", pageWidth / 2, currentY + 18, {
@@ -655,7 +690,7 @@ export const generarPDFUniversal = async (
   if (data.documentos && data.documentos.length > 0) {
     doc.addPage();
     const fotosEvidencia = data.documentos.filter(
-      (d) => d.tipo === "EVIDENCIA_FOTO"
+      (d) => d.tipo === "EVIDENCIA_FOTO",
     );
 
     if (fotosEvidencia.length > 0) {
@@ -664,7 +699,7 @@ export const generarPDFUniversal = async (
 
       let photoY = 40;
       const fotosBase64 = await Promise.all(
-        fotosEvidencia.map((f) => getBase64FromUrl(f.url))
+        fotosEvidencia.map((f) => getBase64FromUrl(f.url)),
       );
 
       for (let i = 0; i < fotosBase64.length; i++) {

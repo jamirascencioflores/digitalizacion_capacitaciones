@@ -7,7 +7,6 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import api from '@/services/api';
 import { getEmpresaConfig } from '@/services/empresa.service';
-import { AxiosError } from 'axios';
 import Select from 'react-select';
 import {
     ArrowLeft, Save, UserPlus, Trash2, FileText, Clock, Briefcase,
@@ -355,10 +354,20 @@ export default function CrearCapacitacionPage() {
     const cerrarModalFirma = () => setIndiceFirmaActiva(null);
     const guardarFirmaModal = async () => {
         if (workerPadRef.current && !workerPadRef.current.isEmpty() && indiceFirmaActiva !== null) {
-            const base64 = workerPadRef.current.getTrimmedCanvas().toDataURL('image/png');
+            const canvas = workerPadRef.current.getCanvas();
+            const base64 = canvas.toDataURL('image/png');
+
             const dni = participantesWatch[indiceFirmaActiva].dni || 'sin_dni';
             const url = await uploadBase64(base64, `firma_trab_${dni}_${Date.now()}.png`);
-            setValue(`participantes.${indiceFirmaActiva}.firma_url`, url);
+
+            if (url) {
+                // 🟢 Actualizamos el valor y forzamos la validación para que se refleje en la lista
+                setValue(`participantes.${indiceFirmaActiva}.firma_url`, url, {
+                    shouldValidate: true,
+                    shouldDirty: true
+                });
+            }
+
             cerrarModalFirma();
         }
     };
@@ -379,40 +388,71 @@ export default function CrearCapacitacionPage() {
         }
     };
 
+    const uploadBase64ToFile = (base64Data: string, filename: string): File => {
+        const arr = base64Data.split(",");
+        const bstr = atob(arr[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) {
+            u8arr[n] = bstr.charCodeAt(n);
+        }
+        return new File([u8arr], filename, { type: "image/png" });
+    };
+
     const onSubmit: SubmitHandler<Inputs> = async (data) => {
         setLoading(true);
         try {
-            if (modoFirma === 'pantalla' && signaturePadRef.current && !signaturePadRef.current.isEmpty()) {
-                const base64 = signaturePadRef.current.getTrimmedCanvas().toDataURL('image/png');
-                data.expositor_firma = await uploadBase64(base64, `firma_expositor_${Date.now()}.png`);
-            }
             const formData = new FormData();
 
-            // 1. Campos simples
-            (Object.keys(data) as Array<keyof Inputs>).forEach((key) => {
-                if (key !== 'participantes') {
-                    const value = data[key];
-                    if (value !== undefined && value !== null) formData.append(key, String(value));
+            // 🟢 1. Procesar Firma del Expositor
+            if (modoFirma === 'pantalla' && signaturePadRef.current) {
+                const pad = signaturePadRef.current;
+                if (!pad.isEmpty()) {
+                    const canvas = pad.getCanvas();
+                    const base64 = canvas.toDataURL('image/png');
+                    const archivoFirma = uploadBase64ToFile(base64, `firma_${Date.now()}.png`);
+                    formData.append('expositor_firma', archivoFirma); // Enviamos Archivo
+                }
+            } else if (data.expositor_firma) {
+                // Si ya es una URL (porque se subió antes o viene de edición)
+                // la mandamos como string. El backend detectará que no es un archivo y la usará tal cual.
+                formData.append('expositor_firma', data.expositor_firma); // Enviamos Texto
+            }
+
+
+            // 🟢 2. Campos de Texto Simples
+            Object.keys(data).forEach((key) => {
+                // Excluimos lo que mandamos por separado o lo que NO es texto
+                if (key !== 'participantes' && key !== 'expositor_firma' && (key as string) !== 'evidencias') {
+                    const value = data[key as keyof Inputs];
+                    if (value !== undefined && value !== null) {
+                        formData.append(key, String(value));
+                    }
                 }
             });
 
-            // 2. Participantes
-            const participantesProcesados = data.participantes.map((p, i) => ({
-                ...p,
-                numero: i + 1
-            }));
-            formData.append('participantes', JSON.stringify(participantesProcesados));
+            // 🟢 3. Participantes (Como JSON string)
+            formData.append('participantes', JSON.stringify(data.participantes));
 
-            // 3. Evidencias
-            evidencias.forEach((file) => formData.append('evidencias', file));
+            // 🟢 4. Evidencias (Fotos de Galería)
+            if (evidencias && evidencias.length > 0) {
+                // Usamos el nombre 'evidencias' que configuramos en Multer
+                Array.from(evidencias).forEach((file) => {
+                    formData.append('evidencias', file as File);
+                });
+            }
 
-            await api.post('/capacitaciones', formData);
-            alert('¡Capacitación registrada con éxito! 📄📸');
-            window.location.href = '/dashboard';
+            // 🚀 ENVÍO ÚNICO
+            const response = await api.post('/capacitaciones', formData);
+
+            if (response.status === 200 || response.status === 201) {
+                alert('¡Capacitación registrada con éxito! 📄📸');
+                router.push('/dashboard');
+            }
+
         } catch (error: unknown) {
-            let mensaje = 'Error desconocido';
-            if (error instanceof AxiosError) mensaje = error.response?.data?.error || error.message;
-            alert('Error al guardar: ' + mensaje);
+            console.error("Error al registrar capacitación:", error);
+            // Tu catch con el alert detallado que pusimos antes 
         } finally {
             setLoading(false);
         }
@@ -433,7 +473,6 @@ export default function CrearCapacitacionPage() {
         menu: (base: Record<string, unknown>) => ({ ...base, zIndex: 9999 })
     };
 
-    // Reemplaza tu función cargarTrabajadoresDeArea con esta versión mejorada:
 
     const cargarTrabajadoresDeArea = () => {
         const areaObjetivo = watch('area_objetivo');

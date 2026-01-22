@@ -1,10 +1,9 @@
 // frontend/app/dashboard/capacitaciones/[id]/page.tsx
 'use client';
-
+import React from 'react';
 import { useState, useEffect, useRef, use, useMemo } from 'react';
 import { useForm, useFieldArray, SubmitHandler, SubmitErrorHandler, Controller } from 'react-hook-form';
 import { useRouter } from 'next/navigation';
-import Image from 'next/image';
 import api from '@/services/api';
 import { getEmpresaConfig } from '@/services/empresa.service';
 import { AxiosError } from 'axios';
@@ -19,6 +18,19 @@ import SignatureCanvas from 'react-signature-canvas';
 import SignaturePad from '@/components/ui/SignaturePad';
 import { uploadImageToLocal, uploadBase64 } from '@/services/upload.service';
 import EvaluacionesTab from '@/components/EvaluacionesTab';
+
+const getImageUrl = (url: string | null | undefined) => {
+    if (!url || typeof url !== 'string' || url.includes('[object Object]')) return "";
+
+    // Si es Cloudinary (empieza con http), devolver tal cual
+    if (url.startsWith("http")) return url;
+
+    // Si es local, construir la ruta usando la URL base del API
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL?.split('/api')[0] || 'http://localhost:4000';
+    const cleanPath = url.startsWith("/") ? url : `/${url}`;
+
+    return `${baseUrl}${cleanPath}`;
+};
 
 // --- UTILIDADES ---
 const normalizar = (texto: string | undefined | null) => {
@@ -61,9 +73,14 @@ interface EmpresaConfig {
 
 interface DocumentoExistente {
     id_documento: number;
-    url: string;
+    id_capacitacion: number;
     tipo: string;
+    url: string;
+    nombre_archivo?: string;
+    fecha_generado?: string;
 }
+
+
 
 interface TrabajadorSelect {
     dni: string;
@@ -134,7 +151,7 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
     const [uploadingRow, setUploadingRow] = useState<number | null>(null);
     const { user, loading: authLoading } = useAuth();
 
-    const esAuditor = user?.rol === 'Auditor';
+    const esAuditor = user?.rol === 'auditor';
 
     // 🟢 ESTADOS CORREGIDOS (Nombres distintos)
     // 1. Pestaña Principal (Detalle vs Evaluaciones)
@@ -191,7 +208,8 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
 
                 reset({
                     ...data,
-                    institucion_procedencia: data.expositor_institucion || '',
+                    institucion_procedencia: data.institucion_procedencia || null,
+                    expositor_firma: data.expositor_firma || '',
                     revision_usada: data.revision_usada || config.revision_actual || '06',
                     fecha: fechaFormat,
                     hora_inicio: horaInicioFormat,
@@ -217,6 +235,33 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
         document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, [id, authLoading, user, router, reset]);
+
+    useEffect(() => {
+        const cargarDatos = async () => {
+            try {
+                const res = await api.get(`/capacitaciones/${id}`);
+                const data = res.data;
+
+                // 🟢 Paso A: Llenar el formulario con los nombres del Schema
+                reset({
+                    ...data,
+                    institucion_procedencia: data.institucion_procedencia,
+                    expositor_firma: data.expositor_firma || '',
+                });
+
+                // 🟢 Paso B: Llenar las evidencias (documentos)
+                if (data.documentos) {
+                    const evidencias = data.documentos.filter(
+                        (doc: DocumentoExistente) => doc.tipo === "EVIDENCIA_FOTO"
+                    );
+                    setFotosExistentes(evidencias);
+                }
+            } catch (error) {
+                console.error("Error al cargar:", error);
+            }
+        };
+        cargarDatos();
+    }, [id, reset]);
 
     // --- CÁLCULO DE GÉNERO ---
     useEffect(() => {
@@ -262,6 +307,7 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
     const totalGlobal = statsPorArea.reduce((acc, curr) => acc + curr.total, 0);
     const asistentesGlobal = statsPorArea.reduce((acc, curr) => acc + curr.asistentes, 0);
     const porcentajeGlobal = totalGlobal > 0 ? Math.round((asistentesGlobal / totalGlobal) * 100) : 0;
+
 
     // --- FUNCIONES AUXILIARES ---
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -494,10 +540,20 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
     const cerrarModalFirma = () => setIndiceFirmaActiva(null);
     const guardarFirmaModal = async () => {
         if (workerPadRef.current && !workerPadRef.current.isEmpty() && indiceFirmaActiva !== null) {
-            const base64 = workerPadRef.current.getTrimmedCanvas().toDataURL('image/png');
+            const canvas = workerPadRef.current.getCanvas();
+            const base64 = canvas.toDataURL('image/png');
+
             const dni = participantesWatch[indiceFirmaActiva].dni || 'sin_dni';
             const url = await uploadBase64(base64, `firma_trab_${dni}_${Date.now()}.png`);
-            setValue(`participantes.${indiceFirmaActiva}.firma_url`, url);
+
+            if (url) {
+                // 🟢 Actualizamos el valor y forzamos la validación para que se refleje en la lista
+                setValue(`participantes.${indiceFirmaActiva}.firma_url`, url, {
+                    shouldValidate: true,
+                    shouldDirty: true
+                });
+            }
+
             cerrarModalFirma();
         }
     };
@@ -520,37 +576,89 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
     // --- SUBMIT ---
     const onSubmit: SubmitHandler<Inputs> = async (data) => {
         if (esAuditor) return;
+
         setSaving(true);
         try {
             let firmaExpositorUrl = data.expositor_firma;
-            if (modoFirma === 'pantalla' && signaturePadRef.current && !signaturePadRef.current.isEmpty()) {
-                const base64 = signaturePadRef.current.getTrimmedCanvas().toDataURL('image/png');
-                firmaExpositorUrl = await uploadBase64(base64, `firma_expositor_${Date.now()}.png`);
+
+            // 🟢 FIRMA DEL EXPOSITOR DESDE PANTALLA
+            if (
+                modoFirma === 'pantalla' &&
+                signaturePadRef.current &&
+                !signaturePadRef.current.isEmpty()
+            ) {
+                const canvas = signaturePadRef.current.getCanvas();
+                const base64 = canvas.toDataURL('image/png');
+
+                firmaExpositorUrl = await uploadBase64(
+                    base64,
+                    `firma_expositor_${Date.now()}.png`
+                );
             }
+
             const formData = new FormData();
+
+            // 🟢 CAMPOS SIMPLES
             (Object.keys(data) as Array<keyof Inputs>).forEach((key) => {
                 if (key !== 'participantes' && key !== 'expositor_firma') {
                     const val = data[key];
-                    if (val !== undefined && val !== null) formData.append(key, String(val));
+                    if (val !== undefined && val !== null) {
+                        formData.append(key, String(val));
+                    }
                 }
             });
-            if (firmaExpositorUrl) formData.append('expositor_firma', firmaExpositorUrl);
-            const participantesData = data.participantes.map((p, i) => ({ ...p, numero: i + 1, firma_url: p.firma_url || null }));
-            formData.append('participantes', JSON.stringify(participantesData));
-            evidenciasNuevas.forEach((file) => formData.append('evidencias', file));
 
-            await api.put(`/capacitaciones/${id}`, formData);
+            // 🟢 FIRMA EXPOSITOR (URL)
+            if (firmaExpositorUrl) {
+                formData.append('expositor_firma', firmaExpositorUrl);
+            }
+
+            // 🟢 PARTICIPANTES (OBLIGATORIO)
+            const participantesData = data.participantes.map((p, i) => ({
+                ...p,
+                numero: i + 1,
+                firma_url: p.firma_url || null,
+            }));
+
+            formData.append(
+                'participantes',
+                JSON.stringify(participantesData)
+            );
+
+            // 🟢 EVIDENCIAS NUEVAS (CLAVE)
+            evidenciasNuevas.forEach((file) => {
+                formData.append('evidencias', file);
+            });
+
+            // 🟢 DEBUG (hazlo una vez)
+            for (const pair of formData.entries()) {
+                console.log(pair[0], pair[1]);
+            }
+
+            // 🟢 ENVIAR FORZANDO MULTIPART
+            await api.put(`/capacitaciones/${id}`, formData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data',
+                },
+            });
+
             alert('¡Capacitación actualizada correctamente!');
             window.location.href = '/dashboard';
+
         } catch (error: unknown) {
             console.error(error);
             let msg = 'Error desconocido';
-            if (error instanceof AxiosError) msg = error.response?.data?.error || error.message;
+
+            if (error instanceof AxiosError) {
+                msg = error.response?.data?.error || error.message;
+            }
+
             alert('Error al actualizar: ' + msg);
         } finally {
             setSaving(false);
         }
     };
+
 
     const onError: SubmitErrorHandler<Inputs> = (e) => {
         console.error("Errores de validación:", e);
@@ -753,53 +861,202 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
 
                     {/* 5. EXPOSITOR Y FOTOS */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {/* COLUMNA EXPOSITOR */}
                         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                            <h3 className="font-bold text-gray-800 mb-4 flex gap-2"><Briefcase size={18} /> Datos del Expositor</h3>
+                            <h3 className="font-bold text-gray-800 mb-4 flex gap-2">
+                                <Briefcase size={18} /> Datos del Expositor
+                            </h3>
                             <div className="space-y-4">
                                 <div className="grid grid-cols-2 gap-4">
-                                    <input disabled={esAuditor} {...register("expositor_nombre")} placeholder="Nombre Completo" className="w-full border rounded px-3 py-2 text-sm" />
-                                    <input disabled={esAuditor} {...register("expositor_dni")} placeholder="DNI" className="w-full border rounded px-3 py-2 text-sm" />
+                                    <div className="flex flex-col gap-1">
+                                        <label className="text-xs font-semibold text-gray-500 uppercase">Nombre</label>
+                                        <input
+                                            disabled={esAuditor}
+                                            {...register("expositor_nombre")}
+                                            placeholder="Nombre Completo"
+                                            className="w-full border rounded px-3 py-2 text-sm bg-gray-50 disabled:opacity-75"
+                                        />
+                                    </div>
+                                    <div className="flex flex-col gap-1">
+                                        <label className="text-xs font-semibold text-gray-500 uppercase">DNI</label>
+                                        <input
+                                            disabled={esAuditor}
+                                            {...register("expositor_dni")}
+                                            placeholder="DNI"
+                                            className="w-full border rounded px-3 py-2 text-sm bg-gray-50 disabled:opacity-75"
+                                        />
+                                    </div>
                                 </div>
-                                <input disabled={esAuditor} {...register("institucion_procedencia")} placeholder="Institución" className="w-full border rounded px-3 py-2 text-sm" />
+
+                                <div className="flex flex-col gap-1">
+                                    <label className="text-xs font-semibold text-gray-500 uppercase">Institución de Procedencia</label>
+                                    <input
+                                        disabled={esAuditor}
+                                        {...register("institucion_procedencia")}
+                                        placeholder="Nombre de la institución"
+                                        className="w-full border rounded px-3 py-2 text-sm bg-white font-medium text-blue-700"
+                                    />
+                                </div>
+
                                 <div className="border border-gray-200 rounded-lg p-3 bg-gray-50 text-center">
                                     <span className="text-xs font-bold text-gray-500 uppercase block mb-2">Firma Expositor</span>
+
+                                    {/* 1. Si existe una firma (en el estado de react-hook-form) */}
                                     {watch('expositor_firma') ? (
-                                        <div className="flex items-center justify-center gap-2 text-green-600"><CheckCircle2 size={16} /> Firmada {!esAuditor && <button type="button" onClick={() => setValue('expositor_firma', '')}><Trash2 size={14} className="text-red-500" /></button>}</div>
-                                    ) : (!esAuditor ? (
                                         <div className="flex flex-col items-center gap-2">
-                                            <div className="flex justify-center gap-2">
-                                                <button type="button" onClick={() => setModoFirma('subir')} className={`text-xs border px-3 py-1 rounded ${modoFirma === 'subir' ? 'bg-blue-50 border-blue-200' : ''}`}><ImageIcon size={16} className="inline mr-1" /> Subir</button>
-                                                <button type="button" onClick={() => setModoFirma('pantalla')} className={`text-xs border px-3 py-1 rounded ${modoFirma === 'pantalla' ? 'bg-blue-50 border-blue-200' : ''}`}><PenTool size={16} className="inline mr-1" /> Firmar</button>
+                                            <div className="relative h-20 w-full bg-white border rounded p-1 shadow-sm">
+                                                {/* Obtenemos la URL procesada */}
+                                                {(() => {
+                                                    const imageUrl = getImageUrl(watch('expositor_firma'));
+
+                                                    // Si no hay URL, mostramos un estado vacío o cargando
+                                                    if (!imageUrl) {
+                                                        return (
+                                                            <div className="flex items-center justify-center h-full text-gray-400 text-[10px] italic">
+                                                                Sin firma registrada
+                                                            </div>
+                                                        );
+                                                    }
+
+                                                    return (
+                                                        /* eslint-disable-next-line @next/next/no-img-element */
+                                                        <img
+                                                            src={imageUrl}
+                                                            alt="Firma Expositor"
+                                                            className="h-full w-full object-contain"
+                                                        />
+                                                    );
+                                                })()}
                                             </div>
-                                            {modoFirma === 'subir' && <div className="flex items-center gap-2 mt-2"><input type="file" onChange={handleUploadFirmaExpositor} className="text-xs" />{uploadingExpositor && <Loader2 className="animate-spin text-blue-600" size={16} />}</div>}
-                                            {modoFirma === 'pantalla' && <div className="mt-2 bg-white border border-dashed w-full"><SignaturePad ref={signaturePadRef} /></div>}
+                                            <div className="flex items-center justify-center gap-2 text-green-600 font-medium text-sm">
+                                                <CheckCircle2 size={16} /> Firmada con éxito
+                                                {!esAuditor && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setValue('expositor_firma', '')}
+                                                        className="p-1 hover:bg-red-50 rounded-full text-red-500 transition"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
-                                    ) : <span className="text-xs text-gray-400">Pendiente</span>)}
+                                    ) : (
+                                        /* 2. Si NO existe firma y NO es auditor, mostrar opciones para firmar */
+                                        !esAuditor ? (
+                                            <div className="flex flex-col items-center gap-2">
+                                                <div className="flex justify-center gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setModoFirma('subir')}
+                                                        className={`text-xs border px-3 py-1 rounded transition ${modoFirma === 'subir' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600'}`}
+                                                    >
+                                                        <ImageIcon size={14} className="inline mr-1" /> Subir
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setModoFirma('pantalla')}
+                                                        className={`text-xs border px-3 py-1 rounded transition ${modoFirma === 'pantalla' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600'}`}
+                                                    >
+                                                        <PenTool size={14} className="inline mr-1" /> Firmar
+                                                    </button>
+                                                </div>
+
+                                                {modoFirma === 'subir' && (
+                                                    <div className="flex items-center gap-2 mt-2 p-2 border border-dashed rounded w-full bg-white">
+                                                        <input type="file" accept="image/*" onChange={handleUploadFirmaExpositor} className="text-xs w-full" />
+                                                        {uploadingExpositor && <Loader2 className="animate-spin text-blue-600" size={16} />}
+                                                    </div>
+                                                )}
+
+                                                {modoFirma === 'pantalla' && (
+                                                    <div className="mt-2 bg-white border border-dashed rounded-lg w-full overflow-hidden">
+                                                        <SignaturePad ref={signaturePadRef} />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            /* 3. Si es auditor y no hay firma */
+                                            <span className="text-xs text-gray-400 italic">No se registró firma</span>
+                                        )
+                                    )}
                                 </div>
                             </div>
                         </div>
+
+                        {/* COLUMNA EVIDENCIAS */}
                         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                            <h3 className="font-bold text-gray-800 mb-4 flex gap-2"><Camera size={18} /> Evidencias</h3>
-                            <div className="grid grid-cols-3 gap-2">
+                            <h3 className="font-bold text-gray-800 mb-4 flex gap-2">
+                                <Camera size={18} /> Evidencias de la Capacitación
+                            </h3>
+                            <div className="grid grid-cols-3 gap-3">
                                 {!esAuditor && (
-                                    <div className="border-2 border-dashed rounded-lg flex items-center justify-center h-24 hover:bg-gray-50 cursor-pointer relative">
-                                        <input type="file" multiple accept="image/*" onChange={handleFileChange} className="absolute inset-0 opacity-0 cursor-pointer" />
-                                        <Camera className="text-gray-400" />
+                                    <div className="border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center h-28 hover:bg-blue-50 hover:border-blue-300 cursor-pointer relative transition group">
+                                        <input
+                                            type="file"
+                                            multiple
+                                            accept="image/*"
+                                            onChange={handleFileChange}
+                                            className="absolute inset-0 opacity-0 cursor-pointer z-10"
+                                        />
+                                        <Camera className="text-gray-400 group-hover:text-blue-500 transition" size={24} />
+                                        <span className="text-[10px] font-bold text-gray-400 uppercase mt-1 group-hover:text-blue-500">Añadir Fotos</span>
                                     </div>
                                 )}
+
+                                {/* Fotos cargadas de Cloudinary (Existentes) */}
                                 {fotosExistentes.map(f => (
-                                    <div key={f.id_documento} className="relative h-24 border rounded overflow-hidden group">
-                                        <Image src={`http://localhost:4000${f.url}`} alt="Evidencia" fill className="object-cover" unoptimized />
-                                        {!esAuditor && <button type="button" onClick={() => removeFotoExistente(f.id_documento)} className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded opacity-0 group-hover:opacity-100 transition"><X size={12} /></button>}
+                                    <div key={f.id_documento} className="relative h-28 border rounded-lg overflow-hidden group shadow-sm">
+                                        <a
+                                            href={getImageUrl(f.url)} // 🟢 Asegura que el link también funcione
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="p-1 bg-white rounded-full text-gray-700 mx-1"
+                                        >
+                                            <Camera size={12} />
+                                        </a>
+                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                                            <a href={getImageUrl(f.url)} target="_blank" className="p-1 bg-white rounded-full text-gray-700 mx-1">
+                                                <Camera size={12} />
+                                            </a>
+                                            {!esAuditor && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => removeFotoExistente(f.id_documento)}
+                                                    className="p-1 bg-red-500 rounded-full text-white mx-1 hover:scale-110 transition"
+                                                >
+                                                    <X size={12} />
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
                                 ))}
+
+                                {/* Previsualización de Fotos Nuevas (Antes de guardar) */}
                                 {evidenciasNuevas.map((f, i) => (
-                                    <div key={i} className="relative h-24 border border-blue-300 rounded overflow-hidden group">
-                                        <Image src={URL.createObjectURL(f)} alt="Nueva" fill className="object-cover" unoptimized />
-                                        {!esAuditor && <button type="button" onClick={() => removeEvidenciaNueva(i)} className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded opacity-0 group-hover:opacity-100 transition"><X size={12} /></button>}
+                                    <div key={i} className="relative h-28 border-2 border-blue-200 rounded-lg overflow-hidden group shadow-sm">|
+                                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                                        <img
+                                            src={URL.createObjectURL(f)}
+                                            alt="Nueva evidencia"
+                                            className="object-cover w-full h-full"
+                                        />
+                                        <div className="absolute top-0 left-0 bg-blue-600 text-[8px] text-white px-1 font-bold">NUEVA</div>
+                                        {!esAuditor && (
+                                            <button
+                                                type="button"
+                                                onClick={() => removeEvidenciaNueva(i)}
+                                                className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full shadow-lg hover:bg-red-600 transition"
+                                            >
+                                                <X size={12} />
+                                            </button>
+                                        )}
                                     </div>
                                 ))}
                             </div>
+                            <p className="mt-4 text-[10px] text-gray-400 italic">
+                                * Se recomienda subir fotos nítidas del evento y la lista de asistencia firmada.
+                            </p>
                         </div>
                     </div>
 
@@ -859,7 +1116,7 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
                                 ) : (
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                                         {faltantes.map((f) => (
-                                            <div key={f.id_trabajador} className="bg-red-50 border border-red-100 p-3 rounded-lg flex items-center gap-3">
+                                            <div key={f.dni} className="bg-red-50 border border-red-100 p-3 rounded-lg flex items-center gap-3">
                                                 <div className="w-8 h-8 rounded-full bg-white text-red-500 flex items-center justify-center font-bold text-xs border border-red-200"><AlertCircle size={16} /></div>
                                                 <div className="overflow-hidden"><p className="font-bold text-gray-800 text-sm truncate" title={`${f.apellidos} ${f.nombres}`}>{f.apellidos}, {f.nombres}</p><p className="text-xs text-gray-500 truncate">{f.cargo} • {f.dni}</p></div>
                                             </div>
