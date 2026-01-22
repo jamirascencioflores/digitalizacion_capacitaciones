@@ -42,6 +42,6 @@ export interface Capacitacion {
   unidad: string;
   expositor_nombre: string;
   expositor_dni: string;
-  expositor_institucion: string;
+  insitucion_procedencia: string;
   participantes?: Participante[]; // Array de participantes
 }

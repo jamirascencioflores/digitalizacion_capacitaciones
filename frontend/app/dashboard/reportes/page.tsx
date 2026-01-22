@@ -93,11 +93,14 @@ export default function ReportesPage() {
                 return;
             }
 
-            const { data: capacitacionCompleta } = await api.get(`/capacitaciones/${id}`);
+            const { data: cap } = await api.get(`/capacitaciones/${id}`);
 
             const datosParaPDF = {
-                ...capacitacionCompleta,
-                expositor_institucion: capacitacionCompleta.expositor_institucion || capacitacionCompleta.institucion_procedencia || ''
+                ...cap,
+                // 🟢 Estandarizamos el nombre para evitar fallos por el typo 'insitucion'
+                institucion_procedencia: cap.institucion_procedencia || cap.insitucion_procedencia || '',
+                // 🟢 Aseguramos que pasamos los documentos para el Anexo Fotográfico
+                documentos: cap.documentos || []
             };
 
             await generarPDFUniversal(datosParaPDF, empresa);

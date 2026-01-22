@@ -9,30 +9,37 @@ interface SignaturePadProps {
     onChange?: (isEmpty: boolean) => void;
 }
 
-// Usamos forwardRef para poder limpiar el canvas desde el padre
 const SignaturePad = React.forwardRef<SignatureCanvas, SignaturePadProps>(({ onChange }, ref) => {
     const [isEmpty, setIsEmpty] = useState(true);
-    // Casteamos el ref para que TypeScript sepa que es un SignatureCanvas
-    const canvasRef = ref as React.MutableRefObject<SignatureCanvas | null>;
+
+    // 🟢 No creamos canvasRef interno. Usamos el 'ref' que viene por parámetro directamente.
 
     const handleClear = () => {
-        canvasRef.current?.clear();
-        setIsEmpty(true);
-        onChange?.(true);
+        // Para limpiar, verificamos si el ref es una función o un objeto (estándar de React)
+        if (ref && 'current' in ref && ref.current) {
+            ref.current.clear();
+            setIsEmpty(true);
+            onChange?.(true);
+        }
     };
 
     const handleEnd = () => {
-        const empty = canvasRef.current?.isEmpty() ?? true;
-        setIsEmpty(empty);
-        onChange?.(empty);
+        if (ref && 'current' in ref && ref.current) {
+            const empty = ref.current.isEmpty();
+            setIsEmpty(empty);
+            onChange?.(empty);
+        }
     };
 
     return (
         <div className="border-2 border-gray-300 border-dashed rounded-xl relative bg-gray-50 overflow-hidden group hover:border-blue-400 transition">
             <SignatureCanvas
-                ref={canvasRef}
+                ref={ref} // 🟢 Pasamos el ref del padre directamente aquí
                 penColor="black"
-                canvasProps={{ className: 'w-full h-40 cursor-crosshair', style: { touchAction: 'none' } }}
+                canvasProps={{
+                    className: 'w-full h-40 cursor-crosshair',
+                    style: { touchAction: 'none' }
+                }}
                 onEnd={handleEnd}
             />
             {isEmpty && (
@@ -41,7 +48,11 @@ const SignaturePad = React.forwardRef<SignatureCanvas, SignaturePadProps>(({ onC
                 </div>
             )}
             {!isEmpty && (
-                <button type="button" onClick={handleClear} className="absolute top-2 right-2 p-2 bg-white/80 backdrop-blur-sm text-gray-600 rounded-full hover:bg-red-100 hover:text-red-600 shadow-sm transition">
+                <button
+                    type="button"
+                    onClick={handleClear}
+                    className="absolute top-2 right-2 p-2 bg-white/80 backdrop-blur-sm text-gray-600 rounded-full hover:bg-red-100 hover:text-red-600 shadow-sm transition"
+                >
                     <Eraser size={18} />
                 </button>
             )}

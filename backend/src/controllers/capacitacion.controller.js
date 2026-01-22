@@ -1,169 +1,186 @@
 // backend/src/controllers/capacitacion.controller.js
 const prisma = require("../utils/db");
 const ExcelJS = require("exceljs");
+const cloudinary = require("../config/cloudinary");
 const path = require("path");
 const fs = require("fs");
 
-// Función auxiliar para normalizar texto
-const normalizar = (texto) => {
-  return texto
-    ? texto
-        .toLowerCase()
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .trim()
-    : "";
-};
+// ==========================================
+// 🛠️ FUNCIONES AUXILIARES
+// ==========================================
 
-// --- HELPER PARA CALCULAR TOTALES EN BACKEND (INFALIBLE) ---
-const calcularTotalesDesdeLista = (listaParticipantes) => {
-  let hombres = 0;
-  let mujeres = 0;
-
-  if (!listaParticipantes || !Array.isArray(listaParticipantes)) {
-    return { total_hombres: 0, total_mujeres: 0, total_trabajadores: 0 };
+// 1. Limpiar Datos "Basura" del FormData ("null", "undefined", "")
+const limpiarDato = (valor) => {
+  if (valor === undefined || valor === null) return undefined;
+  if (typeof valor === "string") {
+    const v = valor.trim();
+    if (v === "" || v === "null" || v === "undefined") return undefined;
+    return v;
   }
-
-  listaParticipantes.forEach((p) => {
-    // Normalizamos el género para evitar errores (M, m, Masculino, Hombre)
-    const genero = p.genero ? String(p.genero).toUpperCase().trim() : "M";
-
-    if (["M", "MASCULINO", "HOMBRE"].includes(genero)) {
-      hombres++;
-    } else if (["F", "FEMENINO", "MUJER"].includes(genero)) {
-      mujeres++;
-    }
-  });
-
-  return {
-    total_hombres: hombres,
-    total_mujeres: mujeres,
-    total_trabajadores: hombres + mujeres,
-  };
+  return valor;
 };
 
-// 🟢 NUEVO: HELPER PARA SINCRONIZAR FIRMAS AL MAESTRO AUTOMÁTICAMENTE
-const sincronizarFirmasConMaestro = async (participantes) => {
-  if (!participantes || !Array.isArray(participantes)) return;
+// 2. Normalizar texto (para búsquedas)
+const normalizar = (str = "") =>
+  str
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[-_/]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 
-  // Filtramos solo los que tienen DNI y alguna FIRMA (url o base64)
-  const conFirma = participantes.filter(
-    (p) => p.dni && (p.firma_url || p.firma)
-  );
+const registrarAsistencia = async (req, res) => {
+  try {
+    const { trabajadorId, capacitacionId, firma } = req.body;
 
-  // Ejecutamos en paralelo (sin await para no frenar la respuesta al usuario)
-  conFirma.forEach(async (p) => {
+    const asistencia = await prisma.asistencia.create({
+      data: {
+        trabajadorId,
+        capacitacionId,
+        firma,
+      },
+    });
+
+    res.json(asistencia);
+  } catch (error) {
+    res.status(500).json({ error: "Error registrando asistencia" });
+  }
+};
+
+// 3. Procesar Hora (HH:mm -> Date)
+const procesarHora = (horaStr) => {
+  if (!horaStr || horaStr === "null" || horaStr === "undefined")
+    return undefined;
+  if (horaStr.includes("T")) return new Date(horaStr);
+
+  const [hh, mm] = horaStr.split(":");
+  const fechaBase = new Date();
+  fechaBase.setHours(hh, mm, 0, 0);
+  return fechaBase;
+};
+
+// 4. Subir imagen a Cloudinary (Devuelve undefined si no hay archivo)
+const subirSiExiste = async (req, campo) => {
+  if (req.files && req.files[campo] && req.files[campo][0]) {
+    console.log(`☁️ Subiendo nueva imagen: ${campo}...`);
     try {
-      const firmaParaGuardar = p.firma_url || p.firma;
-      // Buscamos si existe el trabajador en el MAESTRO y actualizamos su firma
-      await prisma.trabajadores.update({
-        where: { dni: p.dni },
-        data: { firma_url: firmaParaGuardar },
-      });
-    } catch (e) {
-      // Si el trabajador no existe en el maestro o falla, lo ignoramos silenciosamente
-      // console.log(`Info: No se pudo sincronizar firma para DNI ${p.dni}`);
+      const result = await cloudinary.uploader.upload(
+        req.files[campo][0].path,
+        { folder: "capacitaciones" },
+      );
+      return result.secure_url;
+    } catch (uploadError) {
+      console.error(`⚠️ Error subiendo ${campo}:`, uploadError);
+      return undefined;
     }
-  });
+  }
+  return undefined;
 };
 
-// --- 1. CREAR (POST) ---
+// ==========================================
+// 🎮 CONTROLADORES
+// ==========================================
+
 const crearCapacitacion = async (req, res) => {
   try {
-    let {
-      participantes,
-      codigo_acta,
-      fecha,
-      hora_inicio,
-      hora_termino,
-      institucion_procedencia,
-      ...resto
-    } = req.body;
+    // 🟢 PASO 1: Extraemos 'evidencias' aquí para que NO se meta en '...resto'
+    // Esto evita que Prisma intente buscar una columna 'evidencias' que no existe.
+    const { participantes, institucion_procedencia, evidencias, ...resto } =
+      req.body;
 
-    // 1. Parsear participantes
-    if (typeof participantes === "string") {
-      try {
-        participantes = JSON.parse(participantes);
-      } catch (e) {
-        return res
-          .status(400)
-          .json({ error: "Formato de participantes inválido" });
+    const usuarioId = req.user?.id;
+    if (!usuarioId) return res.status(401).json({ error: "No autenticado" });
+
+    // 🟢 PASO 2: Procesar archivos (Firma y Evidencias)
+    const fotosParaGuardar = [];
+    let urlFirmaFinal = resto.expositor_firma || "";
+
+    if (req.files) {
+      // A. Subir Evidencias (Galería) a la tabla 'documentos'
+      if (req.files["evidencias"]) {
+        for (const file of req.files["evidencias"]) {
+          const result = await cloudinary.uploader.upload(file.path, {
+            folder: "capacitaciones",
+          });
+          fotosParaGuardar.push({
+            url: result.secure_url,
+            tipo: "EVIDENCIA_FOTO", // Concuerda con tu modelo
+            nombre_archivo: file.originalname,
+          });
+        }
+      }
+
+      // B. Subir Firma
+      const firmaFile = req.files["expositor_firma"]
+        ? req.files["expositor_firma"][0]
+        : null;
+      if (firmaFile) {
+        const resultF = await cloudinary.uploader.upload(firmaFile.path, {
+          folder: "firmas",
+        });
+        urlFirmaFinal = resultF.secure_url;
       }
     }
-    participantes = participantes.filter(
-      (p, index, self) =>
-        index ===
-        self.findIndex(
-          (t) => t.dni === p.dni && t.dni !== "" // Compara DNI y asegura que no sea vacío
-        )
-    );
+    // 🟢 3. PARSEAR PARTICIPANTES
 
-    // 2. CÁLCULO REAL EN EL BACKEND
-    const calculo = calcularTotalesDesdeLista(participantes);
+    let listaParticipantes = [];
 
-    const existe = await prisma.capacitaciones.findUnique({
-      where: { codigo_acta },
-    });
-    if (existe)
-      return res.status(400).json({ error: "El código de acta ya existe" });
+    try {
+      listaParticipantes =
+        typeof participantes === "string"
+          ? JSON.parse(participantes)
+          : participantes || [];
+    } catch (e) {
+      listaParticipantes = [];
+    }
 
-    // Preparación de Fechas
-    const fechaBase = new Date(fecha).toISOString().split("T")[0];
-    const fechaHoraInicio = new Date(`${fechaBase}T${hora_inicio}:00`);
-    const fechaHoraTermino = new Date(`${fechaBase}T${hora_termino}:00`);
-
+    // 🟢 PASO 3: Guardar en Prisma
     const nueva = await prisma.capacitaciones.create({
       data: {
         ...resto,
-        codigo_acta,
-        creado_por: req.user.id,
-        expositor_institucion: institucion_procedencia,
-        fecha: new Date(`${fecha}T00:00:00`),
-        hora_inicio: fechaHoraInicio,
-        hora_termino: fechaHoraTermino,
-        centros: resto.centros || "Sin especificar",
+        institucion_procedencia: institucion_procedencia || null,
+        expositor_firma: String(urlFirmaFinal),
 
-        // USAMOS EL CÁLCULO DEL BACKEND
-        total_hombres: calculo.total_hombres,
-        total_mujeres: calculo.total_mujeres,
-        total_trabajadores: calculo.total_trabajadores,
+        // Formateo de campos obligatorios
+        fecha: resto.fecha ? new Date(resto.fecha) : undefined,
+        hora_inicio: resto.hora_inicio
+          ? procesarHora(resto.hora_inicio)
+          : undefined,
+        hora_termino: resto.hora_termino
+          ? procesarHora(resto.hora_termino)
+          : undefined,
 
-        // Aseguramos que la firma llegue como string único
-        expositor_firma: Array.isArray(resto.expositor_firma)
-          ? resto.expositor_firma[0]
-          : resto.expositor_firma,
+        total_hombres: Number(resto.total_hombres) || 0,
+        total_mujeres: Number(resto.total_mujeres) || 0,
+        total_trabajadores: Number(resto.total_trabajadores) || 0,
+
+        // Relación con Usuario
+        usuarios: { connect: { id_usuario: Number(usuarioId) } },
+
+        // 🟢 RELACIÓN CON DOCUMENTOS (Tu modelo documentos)
+        documentos: {
+          create: fotosParaGuardar,
+        },
 
         participantes: {
-          create: participantes.map((p) => ({
-            numero: Number(p.numero),
+          create: listaParticipantes.map((p, i) => ({
+            numero: i + 1,
             dni: p.dni,
             apellidos_nombres: p.apellidos_nombres,
             area: p.area,
             cargo: p.cargo,
             genero: p.genero || "M",
-            condicion: p.condicion || "",
-            firma: p.firma_url || null, // Guardamos en tabla participantes
+            firma_url: p.firma_url || null,
           })),
         },
       },
-      include: { participantes: true },
+      include: { participantes: true, documentos: true },
     });
-
-    if (req.files && req.files.length > 0) {
-      const documentosData = req.files.map((file) => ({
-        id_capacitacion: nueva.id_capacitacion,
-        tipo: "EVIDENCIA_FOTO",
-        url: `/uploads/evidencias/${file.filename}`,
-      }));
-      await prisma.documentos.createMany({ data: documentosData });
-    }
-
-    // 🟢 MAGIA AQUÍ: Sincronizar firmas al Maestro
-    sincronizarFirmasConMaestro(participantes);
 
     res.status(201).json({ mensaje: "Registrado con éxito", data: nueva });
   } catch (error) {
-    console.error("Error al crear:", error);
+    console.error("🔥 Error Final:", error);
     res.status(500).json({ error: "Error al guardar", detalle: error.message });
   }
 };
@@ -171,264 +188,359 @@ const crearCapacitacion = async (req, res) => {
 // --- 2. OBTENER TODAS ---
 const obtenerCapacitaciones = async (req, res) => {
   try {
-    const { id, rol } = req.user;
+    const { id_usuario, rol } = req.user;
+    // Filtro: Administradores y Auditores ven todo, usuarios normales solo lo suyo
     const filtro =
-      rol === "Administrador" || rol === "Auditor" ? {} : { creado_por: id };
+      rol === "Administrador" || rol === "Auditor"
+        ? {}
+        : { creado_por: id_usuario };
 
     const caps = await prisma.capacitaciones.findMany({
       where: filtro,
       orderBy: { fecha: "desc" },
       include: {
         usuarios: { select: { nombre: true } },
-        documentos: { select: { id_documento: true, tipo: true } },
+        documentos: { select: { id_documento: true, url: true, tipo: true } },
       },
     });
-    res.json(caps);
+
+    // Mapeamos la respuesta para que el frontend vea "institucion_procedencia"
+    const formateadas = caps.map((c) => ({
+      ...c,
+      institucion_procedencia: c.institucion_procedencia, // 🟢 Clave para que el frontend no falle
+    }));
+
+    res.json(formateadas);
   } catch (error) {
-    res.status(500).json({ error: "Error al listar" });
+    console.error("Error al listar:", error);
+    res.status(500).json({ error: "Error al listar las capacitaciones" });
   }
 };
 
-// --- 3. OBTENER UNA (DETALLE) ---
+// --- 3. OBTENER DETALLE DE CAPACITACIÓN ---
 const obtenerCapacitacion = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // 1. Buscar la capacitación
     const capacitacion = await prisma.capacitaciones.findUnique({
-      where: { id_capacitacion: parseInt(id) },
+      where: { id_capacitacion: Number(id) },
       include: {
         participantes: true,
         documentos: true,
-        evaluaciones: {
-          include: {
-            preguntas: {
-              include: {
-                opciones: true,
-              },
-            },
-          },
+      },
+    });
+
+    if (!capacitacion) {
+      return res.status(404).json({ error: "No encontrado" });
+    }
+
+    // 🧠 Normalizador (tildes + mayúsculas)
+    const normalizar = (str = "") =>
+      str
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .trim();
+
+    // 🎯 Áreas objetivo
+    let areasParaBuscar = [];
+    if (capacitacion.area_objetivo) {
+      areasParaBuscar = capacitacion.area_objetivo
+        .split(",")
+        .map((a) => normalizar(a));
+    }
+
+    let faltantes = [];
+    let porcentaje = 0;
+    let totalObjetivo = 0;
+    let totalAsistentes = 0;
+
+    if (areasParaBuscar.length > 0) {
+      // 👷‍♂️ Todos los trabajadores activos
+      const todosTrabajadores = await prisma.trabajadores.findMany({
+        where: { estado: true },
+        select: {
+          dni: true,
+          nombres: true,
+          apellidos: true,
+          area: true,
+          cargo: true,
+        },
+      });
+
+      // ✅ Trabajadores que pertenecen al área objetivo
+      let trabajadoresObjetivo = todosTrabajadores.filter((t) => {
+        const areaT = normalizar(t.area);
+
+        return areasParaBuscar.some((areaCap) => {
+          const areaCapNorm = normalizar(areaCap);
+
+          // 🟢 Lógica de Mantenimiento / Taller (Unificada)
+          // Si el plan pide "Mantenimiento", buscamos a los de "Taller - Mecanización" y viceversa
+          if (
+            areaCapNorm.includes("mantenimiento") ||
+            areaCapNorm.includes("taller") ||
+            areaCapNorm.includes("mecanizacion")
+          ) {
+            return (
+              areaT.includes("mantenimiento") ||
+              areaT.includes("taller") ||
+              areaT.includes("mecanizacion")
+            );
+          }
+
+          // 🔵 Lógica estándar para las demás áreas
+          return areaT.includes(areaCapNorm);
+        });
+      });
+
+      // 🎯 DNIs del objetivo
+      const dnisObjetivo = new Set(
+        trabajadoresObjetivo.map((t) => t.dni?.trim()),
+      );
+
+      // ✅ Asistentes que SÍ pertenecen al área objetivo
+      const asistentesValidos = capacitacion.participantes.filter((p) =>
+        dnisObjetivo.has(p.dni?.trim()),
+      );
+
+      const asistentesDNI = new Set(
+        asistentesValidos.map((p) => p.dni?.trim()),
+      );
+
+      // ❌ Faltantes reales
+      faltantes = trabajadoresObjetivo.filter(
+        (t) => !asistentesDNI.has(t.dni?.trim()),
+      );
+
+      totalObjetivo = trabajadoresObjetivo.length;
+      totalAsistentes = asistentesDNI.size;
+
+      porcentaje =
+        totalObjetivo > 0
+          ? Math.round((totalAsistentes / totalObjetivo) * 100)
+          : 0;
+    }
+
+    res.json({
+      ...capacitacion,
+      institucion_procedencia: capacitacion.institucion_procedencia,
+      faltantes,
+      cobertura: {
+        total_objetivo: totalObjetivo,
+        asistentes: totalAsistentes,
+        porcentaje,
+      },
+    });
+  } catch (error) {
+    console.error("Error al obtener detalle:", error);
+    res.status(500).json({ error: "Error al obtener el detalle" });
+  }
+};
+
+// --- 4. ACTUALIZAR (PUT) --- 🛡️ VERSIÓN GALERÍA BLINDADA
+const actualizarCapacitacion = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // 1. Usamos 'let' para permitir el parseo de participantes si vienen por FormData
+    let { participantes, institucion_procedencia, evidencias, ...resto } =
+      req.body;
+
+    // Convertir participantes a Array si es necesario
+    const listaParticipantes =
+      typeof participantes === "string"
+        ? JSON.parse(participantes)
+        : participantes;
+
+    // 2. Procesar Imágenes (Firma Expositor y Evidencias)
+    let urlFirmaUpdate = resto.expositor_firma;
+    const nuevasFotos = [];
+
+    if (req.files) {
+      // Firma nueva del expositor
+      if (req.files["expositor_firma"]) {
+        const f = req.files["expositor_firma"][0];
+        const resFirma = await cloudinary.uploader.upload(f.path, {
+          folder: "firmas",
+        });
+        urlFirmaUpdate = resFirma.secure_url;
+      }
+
+      // Evidencias nuevas
+      const evidenciasFiles = req.files["evidencias"] || [];
+      for (const file of evidenciasFiles) {
+        const result = await cloudinary.uploader.upload(file.path, {
+          folder: "capacitaciones",
+        });
+        nuevasFotos.push({
+          url: result.secure_url,
+          tipo: "EVIDENCIA_FOTO",
+          nombre_archivo: file.originalname,
+        });
+      }
+    }
+
+    const participantesConFirma = await prisma.participantes.findMany({
+      where: {
+        id_capacitacion: Number(id),
+        firma_url: { not: null },
+      },
+      select: {
+        dni: true,
+        firma_url: true,
+      },
+    });
+    for (const p of participantesConFirma) {
+      await prisma.trabajadores.updateMany({
+        where: { dni: p.dni.trim() },
+        data: { firma_url: p.firma_url },
+      });
+    }
+
+    // 🟢 LIMPIEZA DE DATOS: Evitamos enviar campos que NO existen en Prisma
+    const {
+      id_capacitacion,
+      creado_por,
+      fecha_registro,
+      documentos,
+      faltantes,
+      cobertura, // 🔥 CLAVE: eliminar cobertura
+      ...datosLimpios
+    } = resto;
+
+    delete datosLimpios.cobertura;
+    delete datosLimpios.faltantes;
+
+    // 3. Actualización Principal de la Capacitación
+    await prisma.participantes.deleteMany({
+      where: {
+        id_capacitacion: Number(id),
+      },
+    });
+    const capacitacionActualizada = await prisma.capacitaciones.update({
+      where: { id_capacitacion: Number(id) },
+      data: {
+        ...datosLimpios,
+        institucion_procedencia: institucion_procedencia || null,
+        ...(urlFirmaUpdate ? { expositor_firma: urlFirmaUpdate } : {}),
+
+        // Forzar formatos correctos para campos de fecha y hora
+        fecha: resto.fecha ? new Date(resto.fecha) : undefined,
+        hora_inicio: resto.hora_inicio
+          ? procesarHora(resto.hora_inicio)
+          : undefined,
+        hora_termino: resto.hora_termino
+          ? procesarHora(resto.hora_termino)
+          : undefined,
+
+        // Totales
+        total_hombres: Number(resto.total_hombres) || 0,
+        total_mujeres: Number(resto.total_mujeres) || 0,
+        total_trabajadores: Number(resto.total_trabajadores) || 0,
+
+        // Relación con fotos nuevas enviadas en este request
+        documentos: {
+          create: nuevasFotos,
         },
       },
     });
 
-    if (!capacitacion) return res.status(404).json({ error: "No encontrado" });
-
-    // 🟢 CORRECCIÓN: Mapear 'firma' (BD) a 'firma_url' (Frontend)
-    // Esto asegura que al editar, el frontend vea la firma guardada
-    const participantesMapeados = capacitacion.participantes.map((p) => ({
-      ...p,
-      firma_url: p.firma,
-    }));
-
-    // 2. DETERMINAR LAS ÁREAS OBJETIVO
-    let areasParaBuscar = [];
-
-    if (capacitacion.area_objetivo) {
-      areasParaBuscar = capacitacion.area_objetivo
-        .split(",")
-        .map((a) => a.trim());
-    } else {
-      const planes = await prisma.planAnual.findMany();
-      const temaActual = normalizar(capacitacion.tema_principal);
-
-      const planEncontrado = planes.find((p) => {
-        const temaPlan = normalizar(p.tema);
-        return temaPlan.includes(temaActual) || temaActual.includes(temaPlan);
-      });
-
-      if (planEncontrado && planEncontrado.areas_objetivo) {
-        areasParaBuscar = planEncontrado.areas_objetivo
-          .split(",")
-          .map((a) => a.trim());
-      }
-    }
-
-    // 3. CALCULAR FALTANTES
-    let faltantes = [];
-
-    if (areasParaBuscar.length > 0) {
-      const todosTrabajadores = await prisma.trabajadores.findMany({
-        where: { estado: true },
-        select: {
-          id_trabajador: true,
-          dni: true,
-          nombres: true,
-          apellidos: true,
-          cargo: true,
-          area: true,
-        },
-      });
-
-      const trabajadoresObjetivo = todosTrabajadores.filter((t) => {
-        const areaTrabajador = normalizar(t.area);
-        return areasParaBuscar.some(
-          (areaObj) => areaTrabajador === normalizar(areaObj)
-        );
-      });
-
-      const asistentesDNI = new Set(
-        capacitacion.participantes.map((p) => p.dni)
-      );
-
-      faltantes = trabajadoresObjetivo.filter((t) => !asistentesDNI.has(t.dni));
-    }
-
-    // Enviamos 'participantesMapeados' en lugar de 'capacitacion.participantes' original
-    res.json({
-      ...capacitacion,
-      participantes: participantesMapeados,
-      faltantes,
-      area_objetivo: capacitacion.area_objetivo || areasParaBuscar.join(", "),
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Error al obtener capacitación" });
-  }
-};
-
-// --- 4. ACTUALIZAR (CON CÁLCULO DE TOTALES) ---
-const actualizarCapacitacion = async (req, res) => {
-  try {
-    const { id } = req.params;
-    let { participantes, ...resto } = req.body;
-
-    // 1. Validar Participantes
-    if (typeof participantes === "string") {
-      try {
-        participantes = JSON.parse(participantes);
-      } catch (e) {
-        return res
-          .status(400)
-          .json({ error: "Formato de participantes inválido" });
-      }
-    }
-    // FILTRO DE DUPLICADOS
-    participantes = participantes.filter(
-      (p, index, self) =>
-        index === self.findIndex((t) => t.dni === p.dni && t.dni !== "")
-    );
-
-    // 2. CÁLCULO DE TOTALES EN BACKEND
-    const calculo = calcularTotalesDesdeLista(participantes);
-
-    // 3. Validar Fechas
-    if (!resto.fecha || !resto.hora_inicio || !resto.hora_termino) {
-      return res.status(400).json({
-        error:
-          "Datos incompletos: La fecha, hora de inicio y término son obligatorias.",
-      });
-    }
-
-    const fechaBase = new Date(resto.fecha).toISOString().split("T")[0];
-
-    const crearFechaSegura = (fechaStr, horaStr) => {
-      const horaLimpia = horaStr.length === 5 ? `${horaStr}:00` : horaStr;
-      const nuevaFecha = new Date(`${fechaStr}T${horaLimpia}`);
-      return isNaN(nuevaFecha.getTime()) ? null : nuevaFecha;
-    };
-
-    const horaInicioDate = crearFechaSegura(fechaBase, resto.hora_inicio);
-    const horaTerminoDate = crearFechaSegura(fechaBase, resto.hora_termino);
-
-    if (!horaInicioDate || !horaTerminoDate) {
-      return res.status(400).json({
-        error:
-          "Formato de hora inválido. Asegúrese de llenar Inicio y Término.",
-      });
-    }
-
-    const fechaDate = new Date(resto.fecha);
-
-    // 4. Preparar Update
-    const updateData = {
-      tema_principal: resto.tema_principal,
-      objetivo: resto.objetivo,
-      temario: resto.temario,
-      sede_empresa: resto.sede_empresa,
-      codigo_acta: resto.codigo_acta,
-      revision_usada: resto.revision_usada,
-      actividad: resto.actividad,
-      accion_correctiva: resto.accion_correctiva,
-      modalidad: resto.modalidad,
-      categoria: resto.categoria,
-      centros: resto.centros,
-      total_horas: resto.total_horas,
-
-      expositor_nombre: resto.expositor_nombre,
-      expositor_dni: resto.expositor_dni,
-      expositor_institucion: resto.institucion_procedencia,
-
-      expositor_firma: Array.isArray(resto.expositor_firma)
-        ? resto.expositor_firma[0]
-        : resto.expositor_firma,
-
-      // USAMOS EL CÁLCULO DEL BACKEND
-      total_hombres: calculo.total_hombres,
-      total_mujeres: calculo.total_mujeres,
-      total_trabajadores: calculo.total_trabajadores,
-
-      fecha: fechaDate,
-      hora_inicio: horaInicioDate,
-      hora_termino: horaTerminoDate,
-
-      participantes: {
-        deleteMany: {},
-        create: participantes.map((p) => ({
-          numero: Number(p.numero),
+    if (listaParticipantes?.length) {
+      await prisma.participantes.createMany({
+        data: listaParticipantes.map((p, index) => ({
+          id_capacitacion: Number(id),
+          numero: index + 1,
           dni: p.dni,
           apellidos_nombres: p.apellidos_nombres,
           area: p.area,
           cargo: p.cargo,
           genero: p.genero || "M",
-          // Guardamos firma (puede venir como firma_url del front o firma si ya existía)
-          firma: p.firma_url || p.firma || null,
+          firma_url: p.firma_url || null,
+          condicion: p.condicion || null,
         })),
-      },
-    };
-
-    // 5. Ejecutar Update
-    const actualizado = await prisma.capacitaciones.update({
-      where: { id_capacitacion: Number(id) },
-      data: updateData,
-    });
-
-    // 6. Guardar Evidencias Nuevas
-    if (req.files && req.files.length > 0) {
-      const documentosData = req.files.map((file) => ({
-        id_capacitacion: Number(id),
-        tipo: "EVIDENCIA_FOTO",
-        url: `/uploads/evidencias/${file.filename}`,
-      }));
-      await prisma.documentos.createMany({ data: documentosData });
+      });
     }
 
-    // 🟢 MAGIA AQUÍ: Sincronizar firmas al Maestro también en Update
-    sincronizarFirmasConMaestro(participantes);
+    // 4. Sincronización Maestra: subir firmas y actualizar trabajadores
+    if (listaParticipantes && Array.isArray(listaParticipantes)) {
+      for (const p of listaParticipantes) {
+        // 🟢 Caso 1: firma dibujada (base64)
+        if (p.firma_base64 && p.firma_base64.startsWith("data:image")) {
+          const uploadResult = await cloudinary.uploader.upload(
+            p.firma_base64,
+            {
+              folder: "firmas_trabajadores",
+              resource_type: "image",
+            },
+          );
 
-    res.json({ mensaje: "Actualizado correctamente", data: actualizado });
+          const firmaUrl = uploadResult.secure_url;
+
+          // 🔹 Actualizar firma en participantes
+          await prisma.participantes.updateMany({
+            where: {
+              dni: p.dni,
+              id_capacitacion: Number(id),
+            },
+            data: {
+              firma_url: firmaUrl,
+            },
+          });
+
+          // 🔹 Actualizar firma en maestro_trabajadores
+          await prisma.trabajadores.updateMany({
+            where: { dni: p.dni.trim() },
+            data: { firma_url: firmaUrl },
+          });
+        }
+
+        // 🟢 Caso 2: firma ya existente (subida manualmente)
+        else if (p.firma_url && p.dni) {
+          await prisma.trabajadores.updateMany({
+            where: { dni: p.dni.trim() },
+            data: { firma_url: p.firma_url },
+          });
+        }
+      }
+    }
+
+    // 5. Respuesta Exitosa
+    res.json({
+      mensaje: "Capacitación y firmas de trabajadores actualizadas con éxito",
+      data: capacitacionActualizada,
+    });
   } catch (error) {
-    console.error("❌ Error en Update:", error);
+    console.error("Error crítico en el controlador:", error);
+    res.status(500).json({
+      error: "Error interno al procesar la actualización",
+      detalle: error.message,
+    });
+  }
+};
+
+// --- NUEVO: Eliminar una foto específica de la galería ---
+const eliminarDocumento = async (req, res) => {
+  const { idDoc } = req.params;
+  try {
+    await prisma.documentos.delete({
+      where: { id_documento: Number(idDoc) },
+    });
+    console.log(`🗑️ Documento ${idDoc} eliminado físicamente de la DB`);
+    res.json({ mensaje: "Foto eliminada correctamente" });
+  } catch (error) {
+    console.error("❌ Error al eliminar foto:", error);
     res
       .status(500)
-      .json({ error: "Error interno al actualizar", detalle: error.message });
+      .json({ error: "No se pudo eliminar la foto de la galería" });
   }
 };
 
 // --- 5. ELIMINAR ---
 const eliminarCapacitacion = async (req, res) => {
+  const { id } = req.params;
   try {
-    if (req.user.rol === "Auditor") {
-      return res
-        .status(403)
-        .json({ error: "Acceso denegado: Auditor solo lectura." });
-    }
-    const { id } = req.params;
-
     await prisma.participantes.deleteMany({
-      where: { id_capacitacion: Number(id) },
-    });
-    await prisma.documentos.deleteMany({
       where: { id_capacitacion: Number(id) },
     });
     await prisma.capacitaciones.delete({
@@ -440,7 +552,7 @@ const eliminarCapacitacion = async (req, res) => {
   }
 };
 
-// --- 6. EXPORTAR EXCEL PRO ---
+// --- 6. EXPORTAR EXCEL ---
 const exportarExcel = async (req, res) => {
   try {
     console.log("--> Generando Excel...");
@@ -620,11 +732,11 @@ const exportarExcel = async (req, res) => {
 
     res.setHeader(
       "Content-Type",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     );
     res.setHeader(
       "Content-Disposition",
-      "attachment; filename=Reporte_Actas_Completo.xlsx"
+      "attachment; filename=Reporte_Actas_Completo.xlsx",
     );
 
     await workbook.xlsx.write(res);
@@ -635,7 +747,7 @@ const exportarExcel = async (req, res) => {
   }
 };
 
-// --- OBTENER DETALLE CUMPLIMIENTO ---
+// --- 7. DETALLE CUMPLIMIENTO ---
 const obtenerDetalleCumplimiento = async (req, res) => {
   const { id } = req.params;
   try {
@@ -693,11 +805,11 @@ const obtenerDetalleCumplimiento = async (req, res) => {
     // 5. Cálculos Finales
     const meta = trabajadoresObjetivo.length;
     const asistentesValidos = trabajadoresObjetivo.filter((t) =>
-      dnisAsistentes.has(t.dni)
+      dnisAsistentes.has(t.dni),
     ).length;
 
     const faltantes = trabajadoresObjetivo.filter(
-      (t) => !dnisAsistentes.has(t.dni)
+      (t) => !dnisAsistentes.has(t.dni),
     );
 
     const cobertura =
@@ -739,4 +851,6 @@ module.exports = {
   eliminarCapacitacion,
   exportarExcel,
   obtenerDetalleCumplimiento,
+  eliminarDocumento,
+  registrarAsistencia,
 };

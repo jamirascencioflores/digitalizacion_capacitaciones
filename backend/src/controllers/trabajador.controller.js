@@ -5,7 +5,10 @@ const path = require("path");
 const XLSX = require("xlsx");
 const fs = require("fs");
 // 🟢 1. IMPORTAMOS LA UTILIDAD DE CLOUDINARY
-const { uploadImage } = require("../utils/cloudinary");
+const {
+  uploadFromBuffer,
+  uploadFromBase64,
+} = require("../utils/uploadToCloudinary");
 
 // 1. LISTAR TODOS
 const obtenerTrabajadores = async (req, res) => {
@@ -74,11 +77,21 @@ const guardarTrabajador = async (req, res) => {
     // Si no viene archivo, usamos el firma_url que venga en el body (o null).
     let urlFinal = firma_url;
 
+    // 🖊️ FIRMA DIBUJADA (base64)
+    if (firma_url && firma_url.startsWith("data:image")) {
+      console.log("✍️ Subiendo firma dibujada...");
+      const upload = await uploadFromBase64(firma_url, "firmas_trabajadores");
+      urlFinal = upload.secure_url;
+    }
+
+    // 📁 FIRMA COMO ARCHIVO
     if (req.file) {
-      console.log("📤 Subiendo firma a Cloudinary...");
-      const result = await uploadImage(req.file.buffer, "firmas_trabajadores");
-      urlFinal = result.secure_url;
-      console.log("✅ Firma subida:", urlFinal);
+      console.log("📤 Subiendo firma como archivo...");
+      const upload = await uploadFromBuffer(
+        req.file.buffer,
+        "firmas_trabajadores",
+      );
+      urlFinal = upload.secure_url;
     }
 
     const trabajador = await prisma.trabajadores.upsert({
