@@ -48,6 +48,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                     src="/nos_planet.png"
                                     alt="Nos Planét"
                                     fill
+                                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
                                     className="object-contain grayscale group-hover:grayscale-0 transition-all duration-500 drop-shadow-sm group-hover:drop-shadow-md"
                                 />
                             </div>

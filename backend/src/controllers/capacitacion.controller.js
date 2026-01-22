@@ -91,7 +91,16 @@ const crearCapacitacion = async (req, res) => {
 
     const usuarioId = req.user?.id;
     if (!usuarioId) return res.status(401).json({ error: "No autenticado" });
+    // 🟢 CONFIGURACIÓN CLOUDINARY: Carpeta dinámica para organización
+    const CARPETA_BASE = "sistema_capacitaciones";
 
+    const rutaEvidencias = `${CARPETA_BASE}/cap_${id}/evidencias`;
+    const result = await uploadFromBuffer(file.buffer, rutaEvidencias);
+
+    const rutaFirma = `${CARPETA_BASE}/cap_${id}/firma`;
+    const resultF = await uploadFromBuffer(firmaFile.buffer, rutaFirma);
+    // Como en CREATE no tenemos ID aún, usamos un identificador temporal único
+    const folderTemporal = `${CARPETA_BASE}/temp_${Date.now()}`;
     // 🟢 PASO 2: Procesar archivos (Firma y Evidencias)
     const fotosParaGuardar = [];
     let urlFirmaFinal = resto.expositor_firma || "";
@@ -101,13 +110,15 @@ const crearCapacitacion = async (req, res) => {
       if (req.files["evidencias"]) {
         for (const file of req.files["evidencias"]) {
           const result = await cloudinary.uploader.upload(file.path, {
-            folder: "capacitaciones",
+            folder: `${folderTemporal}/evidencias`,
           });
           fotosParaGuardar.push({
             url: result.secure_url,
             tipo: "EVIDENCIA_FOTO", // Concuerda con tu modelo
             nombre_archivo: file.originalname,
           });
+          // 🟢 IMPORTANTE: Borrar el archivo del disco después de subir a Cloudinary
+          if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
         }
       }
 
@@ -117,9 +128,12 @@ const crearCapacitacion = async (req, res) => {
         : null;
       if (firmaFile) {
         const resultF = await cloudinary.uploader.upload(firmaFile.path, {
-          folder: "firmas",
+          folder: `${folderTemporal}/firma_expositor`,
         });
         urlFirmaFinal = resultF.secure_url;
+
+        // 🟢 IMPORTANTE: Borrar el archivo de la firma
+        if (fs.existsSync(firmaFile.path)) fs.unlinkSync(firmaFile.path);
       }
     }
     // 🟢 3. PARSEAR PARTICIPANTES
@@ -180,6 +194,14 @@ const crearCapacitacion = async (req, res) => {
 
     res.status(201).json({ mensaje: "Registrado con éxito", data: nueva });
   } catch (error) {
+    // 🔴 LIMPIEZA DE SEGURIDAD: Si algo falló antes de terminar, borramos los archivos que Multer dejó
+    if (req.files) {
+      Object.values(req.files)
+        .flat()
+        .forEach((f) => {
+          if (fs.existsSync(f.path)) fs.unlinkSync(f.path);
+        });
+    }
     console.error("🔥 Error Final:", error);
     res.status(500).json({ error: "Error al guardar", detalle: error.message });
   }
@@ -334,6 +356,13 @@ const obtenerCapacitacion = async (req, res) => {
     });
   } catch (error) {
     console.error("Error al obtener detalle:", error);
+    if (req.files) {
+      Object.values(req.files)
+        .flat()
+        .forEach((file) => {
+          if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
+        });
+    }
     res.status(500).json({ error: "Error al obtener el detalle" });
   }
 };
@@ -358,26 +387,39 @@ const actualizarCapacitacion = async (req, res) => {
     const nuevasFotos = [];
 
     if (req.files) {
+      const CARPETA_BASE = "sistema_capacitaciones";
+      const folderProyecto = `${CARPETA_BASE}/cap_${id}`; // Carpeta única por capacitación
       // Firma nueva del expositor
       if (req.files["expositor_firma"]) {
         const f = req.files["expositor_firma"][0];
         const resFirma = await cloudinary.uploader.upload(f.path, {
-          folder: "firmas",
+          folder: `${folderProyecto}/firma_expositor`,
+          public_id: `firma_${id}_${Date.now()}`,
+          use_filename: true, // 🟢 Fuerza a usar la ruta y nombre que enviamos
+          unique_filename: false,
+          overwrite: true,
+          resource_type: "auto", // 🟢 Asegura que detecte que es una imagen
         });
         urlFirmaUpdate = resFirma.secure_url;
+        // Borrar archivo temporal
+        if (fs.existsSync(f.path)) fs.unlinkSync(f.path);
       }
 
       // Evidencias nuevas
       const evidenciasFiles = req.files["evidencias"] || [];
       for (const file of evidenciasFiles) {
         const result = await cloudinary.uploader.upload(file.path, {
-          folder: "capacitaciones",
+          folder: `${folderProyecto}/evidencias`, // Se guarda en su carpeta cap_XX/evidencias
+          quality: "auto",
+          fetch_format: "auto",
         });
         nuevasFotos.push({
           url: result.secure_url,
           tipo: "EVIDENCIA_FOTO",
           nombre_archivo: file.originalname,
         });
+        // 🟢 LIMPIEZA: Borrar cada foto temporal tras subirla
+        if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
       }
     }
 
@@ -512,6 +554,14 @@ const actualizarCapacitacion = async (req, res) => {
     });
   } catch (error) {
     console.error("Error crítico en el controlador:", error);
+    // 🔴 LIMPIEZA DE EMERGENCIA EN CASO DE ERROR
+    if (req.files) {
+      Object.values(req.files)
+        .flat()
+        .forEach((file) => {
+          if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
+        });
+    }
     res.status(500).json({
       error: "Error interno al procesar la actualización",
       detalle: error.message,
