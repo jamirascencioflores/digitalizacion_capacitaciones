@@ -1,5 +1,5 @@
 // backend/src/controllers/usuario.controller.js
-const prisma = require("../utils/db"); // O verifica si tu ruta es ("../lib/prisma")
+const prisma = require("../utils/db");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
@@ -24,7 +24,7 @@ const login = async (req, res) => {
     // Verificar contraseña
     const passValido = await bcrypt.compare(
       contrasena,
-      userEncontrado.contrasena
+      userEncontrado.contrasena,
     );
 
     if (!passValido) {
@@ -38,7 +38,7 @@ const login = async (req, res) => {
         rol: userEncontrado.rol,
       },
       process.env.JWT_SECRET,
-      { expiresIn: "8h" }
+      { expiresIn: "8h" },
     );
 
     // Quitamos la contraseña de la respuesta
@@ -158,11 +158,9 @@ const actualizarUsuario = async (req, res) => {
     // Validar campos obligatorios (La contraseña es opcional al editar)
     // Nota: Verificamos que 'estado' no sea undefined (puede ser false)
     if (!nombreFinal || !usuario || !rol || estado === undefined) {
-      return res
-        .status(400)
-        .json({
-          error: "Faltan campos obligatorios (nombre, usuario, rol, estado)",
-        });
+      return res.status(400).json({
+        error: "Faltan campos obligatorios (nombre, usuario, rol, estado)",
+      });
     }
 
     const idUsuario = parseInt(id);
@@ -173,11 +171,9 @@ const actualizarUsuario = async (req, res) => {
     });
 
     if (existe && existe.id_usuario !== idUsuario) {
-      return res
-        .status(400)
-        .json({
-          error: "El nombre de usuario ya está en uso por otra persona",
-        });
+      return res.status(400).json({
+        error: "El nombre de usuario ya está en uso por otra persona",
+      });
     }
 
     // Preparar objeto de datos
@@ -243,10 +239,72 @@ const eliminarUsuario = async (req, res) => {
   }
 };
 
+const obtenerSolicitudesReset = async (req, res) => {
+  try {
+    const usuarios = await prisma.usuarios.findMany({
+      where: { solicita_reset: true },
+      select: {
+        id_usuario: true,
+        usuario: true, // Este es el DNI
+        nombre: true,
+        rol: true,
+        fecha_creacion: true, // Opcional si tienes fecha
+      },
+    });
+    res.json(usuarios);
+  } catch (error) {
+    res.status(500).json({ error: "Error al cargar alertas" });
+  }
+};
+
+const resetearContrasena = async (req, res) => {
+  try {
+    const { id } = req.params;
+    // 1. Recibimos la nueva contraseña del cuerpo de la petición
+    const { nuevaContrasena } = req.body;
+
+    // Buscamos al usuario
+    const user = await prisma.usuarios.findUnique({
+      where: { id_usuario: Number(id) },
+    });
+
+    if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
+
+    // 2. DECISIÓN: ¿Usamos la que escribió el admin o el DNI?
+    // Si nuevaContrasena tiene texto, lo usamos. Si no, usamos el DNI (user.usuario).
+    const passFinal =
+      nuevaContrasena && nuevaContrasena.trim() !== ""
+        ? nuevaContrasena
+        : user.usuario;
+
+    // Encriptamos
+    const salt = await bcrypt.genSalt(10);
+    const hash = await bcrypt.hash(passFinal, salt);
+
+    // Actualizamos
+    await prisma.usuarios.update({
+      where: { id_usuario: Number(id) },
+      data: {
+        contrasena: hash,
+        solicita_reset: false, // Apagamos la alerta
+      },
+    });
+
+    res.json({
+      message: `Contraseña actualizada correctamente.`,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Error al resetear contraseña" });
+  }
+};
+
 module.exports = {
   login,
   obtenerUsuarios,
   registrarUsuario,
   actualizarUsuario,
   eliminarUsuario,
+  obtenerSolicitudesReset,
+  resetearContrasena,
 };

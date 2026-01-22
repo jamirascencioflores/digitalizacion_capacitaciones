@@ -28,7 +28,7 @@ const login = async (req, res) => {
       {
         id: user.id_usuario,
         rol: user.rol,
-        nombre: user.nombre, // En tu debug sale 'nombre', no 'nombre_completo'
+        nombre: user.nombre, 
       },
       "secreto_super_seguro",
       { expiresIn: "12h" }
@@ -47,5 +47,29 @@ const login = async (req, res) => {
     res.status(500).json({ error: "Error en el servidor" });
   }
 };
+const solicitarRecuperacion = async (req, res) => {
+  try {
+    const { usuario } = req.body;
 
-module.exports = { login };
+    // Buscamos si existe
+    const user = await prisma.usuarios.findUnique({ where: { usuario } });
+    
+    if (!user) {
+      // Por seguridad, no decimos si existe o no, pero simulamos éxito
+      return res.json({ message: "Si el usuario existe, se notificó al admin." });
+    }
+
+    // Marcamos la solicitud
+    await prisma.usuarios.update({
+      where: { usuario },
+      data: { solicita_reset: true }
+    });
+
+    res.json({ message: "Solicitud enviada. Contacta al administrador." });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Error al procesar solicitud" });
+  }
+};
+
+module.exports = { login, solicitarRecuperacion };

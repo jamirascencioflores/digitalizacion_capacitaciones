@@ -1,9 +1,12 @@
+// backend/src/routes/empresa.routes.js
 const { Router } = require("express");
 const {
   obtenerConfiguracion,
   actualizarConfiguracion,
 } = require("../controllers/empresa.controller");
-const verificarToken = require("../middlewares/auth.middleware");
+
+// 🟢 CORRECCIÓN: Agregamos llaves { } para sacar la función del objeto
+const { verificarToken } = require("../middlewares/auth.middleware");
 
 const router = Router();
 

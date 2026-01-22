@@ -3,57 +3,55 @@ console.log("🟢 ---> CARGANDO RUTAS NUEVAS DE TRABAJADOR <--- 🟢");
 const { Router } = require("express");
 const router = Router();
 const controller = require("../controllers/trabajador.controller");
-const authMiddleware = require("../middlewares/auth.middleware");
 
-// 🔴 BORRA CUALQUIER LÍNEA QUE SE PAREZCA A ESTO:
-// const { upload } = require("../controllers/upload.controller");
-// const upload = require("../middlewares/upload.middleware");
+// 🟢 CORRECCIÓN: Usamos llaves para importar la función correcta
+const { verificarToken } = require("../middlewares/auth.middleware");
 
-// 🟢 AGREGA ESTO EN SU LUGAR (Esto fuerza el uso de Memoria RAM para Cloudinary):
+// Configuración de Multer (Memoria RAM para Cloudinary/Buffer)
 const multer = require("multer");
 const upload = multer({ storage: multer.memoryStorage() });
 
-// --- RUTAS ESTÁTICAS ---
-router.get("/listado", authMiddleware, controller.getTrabajadoresSelect);
+// --- RUTAS ESTÁTICAS (Van primero) ---
+router.get("/listado", verificarToken, controller.getTrabajadoresSelect);
 
 // Ruta para carga masiva de firmas
 router.post(
   "/upload-masivo",
-  authMiddleware,
-  upload.array("firmas"), // <--- Usa la variable 'upload' que definimos arriba
-  controller.cargaMasivaFirmas
+  verificarToken,
+  upload.array("firmas"),
+  controller.cargaMasivaFirmas,
 );
 
 // Ruta para importar Excel
 router.post(
   "/importar-excel",
-  authMiddleware,
+  verificarToken,
   upload.single("excel"),
-  controller.importarExcelInteligente
+  controller.importarExcelInteligente,
 );
 
 // --- RUTAS GENERALES ---
-router.get("/", authMiddleware, controller.obtenerTrabajadores);
+router.get("/", verificarToken, controller.obtenerTrabajadores);
 
-// Ruta para CREAR trabajador (con firma individual)
+// Ruta para CREAR trabajador
 router.post(
   "/",
-  authMiddleware,
-  upload.single("firma"), // <--- Esto capturará la firma en RAM
-  controller.guardarTrabajador
+  verificarToken,
+  upload.single("firma"),
+  controller.guardarTrabajador,
 );
 
-// ... Resto de rutas (PUT, DELETE, etc) ...
-router.get("/:dni", authMiddleware, controller.buscarPorDNI);
+// --- RUTAS DINÁMICAS (Van al final) ---
+router.get("/:dni", verificarToken, controller.buscarPorDNI);
 
 router.put(
   "/:id",
-  authMiddleware,
-  upload.single("firma"), // <--- Esto permite actualizar firma en RAM
-  controller.actualizarTrabajador
+  verificarToken,
+  upload.single("firma"),
+  controller.actualizarTrabajador,
 );
 
-router.put("/:id/eliminar-firma", authMiddleware, controller.eliminarFirma);
-router.delete("/:id", authMiddleware, controller.eliminarTrabajador);
+router.put("/:id/eliminar-firma", verificarToken, controller.eliminarFirma);
+router.delete("/:id", verificarToken, controller.eliminarTrabajador);
 
 module.exports = router;
