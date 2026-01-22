@@ -23,9 +23,15 @@ const subirArchivo = async (req, res) => {
       return res.status(400).json({ error: "No se envió ningún archivo" });
     }
 
-    console.log("📤 Subiendo imagen a Cloudinary...");
+    // 🟢 PASO 1: Recibir la carpeta desde el body o usar la default
+    const carpetaDestino = req.body.folder || "uploads_generales";
 
-    const result = await uploadFromBuffer(req.file.buffer, "uploads_generales");
+    console.log(
+      `📤 Subiendo imagen a Cloudinary en la carpeta: ${carpetaDestino}`,
+    );
+
+    // 🟢 PASO 2: Usar la variable en lugar del texto fijo
+    const result = await uploadFromBuffer(req.file.buffer, carpetaDestino);
 
     console.log("✅ Imagen subida:", result.secure_url);
 

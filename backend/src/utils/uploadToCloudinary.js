@@ -3,10 +3,16 @@ const cloudinary = require("../config/cloudinary");
 const streamifier = require("streamifier");
 
 // 🟢 Subir desde BUFFER (multer memoryStorage)
-const uploadFromBuffer = (buffer, folder = "capacitaciones") => {
+// En tu archivo de utilidades/cloudinary
+const uploadFromBuffer = (buffer, folder = "sistema_capacitaciones/otros") => {
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
-      { folder, resource_type: "auto" },
+      {
+        folder,
+        resource_type: "auto",
+        quality: "auto", // 🟢 Aprovecha para optimizar el peso aquí
+        fetch_format: "auto",
+      },
       (error, result) => {
         if (error) reject(error);
         else resolve(result);
