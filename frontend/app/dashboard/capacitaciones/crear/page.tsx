@@ -2,6 +2,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useParams } from 'next/navigation';
 import { useForm, useFieldArray, SubmitHandler, SubmitErrorHandler, Controller } from 'react-hook-form';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
@@ -81,7 +82,8 @@ type Inputs = {
     total_horas: string;
     expositor_nombre: string;
     expositor_dni: string;
-    expositor_firma: string;
+    expositor_firma?: string | FileList;
+    evidencias?: FileList;
     institucion_procedencia: string;
     area_objetivo: string;
     participantes: {
@@ -116,6 +118,8 @@ export default function CrearCapacitacionPage() {
     const [indiceFirmaActiva, setIndiceFirmaActiva] = useState<number | null>(null);
     const workerPadRef = useRef<SignatureCanvas>(null);
     const [empresaConfig, setEmpresaConfig] = useState<EmpresaConfig | null>(null);
+    const params = useParams(); // 2. Usar el hook
+    const id = params?.id; // 3. Obtener el ID
 
     useEffect(() => {
         if (!authLoading && user?.rol === 'Auditor') {
@@ -261,17 +265,33 @@ export default function CrearCapacitacionPage() {
 
     // --- MANEJO DE EVIDENCIAS Y FIRMAS ---
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files) {
+        if (e.target.files && e.target.files.length > 0) {
+            // 1. Convertimos FileList a Array real
             const newFiles = Array.from(e.target.files);
-            if (evidencias.length + newFiles.length > 5) {
-                alert("Máximo 5 fotos permitidas");
-                return;
-            }
-            setEvidencias(prev => [...prev, ...newFiles]);
+
+            // 2. Unimos con lo que ya tenías (para no borrar las anteriores)
+            const updatedFiles = [...evidencias, ...newFiles];
+
+            // 3. Actualizamos la VISTA PREVIA
+            setEvidencias(updatedFiles);
+
+            // 4. 🟢 Actualizamos EL FORMULARIO (Esto es lo que faltaba)
+            // Nota: React Hook Form acepta arrays de archivos si usamos setValue
+            setValue("evidencias", updatedFiles as unknown as FileList, { shouldValidate: true });
         }
     };
-    const removeEvidencia = (index: number) => setEvidencias(prev => prev.filter((_, i) => i !== index));
 
+    const removeEvidencia = (index: number) => {
+        // 1. Filtramos para quitar la foto del índice seleccionado
+        const updatedFiles = evidencias.filter((_, i) => i !== index);
+
+        // 2. Actualizamos VISTA
+        setEvidencias(updatedFiles);
+
+        // 3. 🟢 Actualizamos FORMULARIO
+        setValue("evidencias", updatedFiles as unknown as FileList, { shouldValidate: true });
+    };
+    
     // --- LOGICA TABLA INTELIGENTE (OPCIONES DINÁMICAS) ---
     const getOpcionesFila = (index: number) => {
         const filaActual = participantesWatch[index];
@@ -404,55 +424,117 @@ export default function CrearCapacitacionPage() {
         try {
             const formData = new FormData();
 
-            // 🟢 1. Procesar Firma del Expositor
-            if (modoFirma === 'pantalla' && signaturePadRef.current) {
+            // 👇 LOG DE DIAGNÓSTICO 1
+            console.log("🔍 DATA RECIBIDA DEL FORMULARIO:", data);
+            console.log("🔍 MODO FIRMA:", modoFirma);
+
+            // ---------------------------------------------------------
+            // 1. FIRMA
+            // ---------------------------------------------------------
+            if (modoFirma === 'pantalla' && signaturePadRef.current && !signaturePadRef.current.isEmpty()) {
+                console.log("✅ Entró a firma por PANTALLA"); // <--- MIRA SI SALE ESTO
                 const pad = signaturePadRef.current;
-                if (!pad.isEmpty()) {
-                    const canvas = pad.getCanvas();
-                    const base64 = canvas.toDataURL('image/png');
-                    const archivoFirma = uploadBase64ToFile(base64, `firma_${Date.now()}.png`);
-                    formData.append('expositor_firma', archivoFirma); // Enviamos Archivo
-                }
-            } else if (data.expositor_firma) {
-                // Si ya es una URL (porque se subió antes o viene de edición)
-                // la mandamos como string. El backend detectará que no es un archivo y la usará tal cual.
-                formData.append('expositor_firma', data.expositor_firma); // Enviamos Texto
+                const canvas = pad.getCanvas();
+                const base64 = canvas.toDataURL('image/png');
+                const archivoFirma = uploadBase64ToFile(base64, `firma_expositor_${Date.now()}.png`);
+                formData.append('expositor_firma', archivoFirma);
             }
 
+            else if (data.expositor_firma && (data.expositor_firma as unknown as FileList)[0] instanceof File) {
+                console.log("✅ Entró a firma por INPUT FILE"); // <--- MIRA SI SALE ESTO
+                const fileList = data.expositor_firma as unknown as FileList;
+                formData.append('expositor_firma', fileList[0]);
+            }
 
-            // 🟢 2. Campos de Texto Simples
+            else {
+                console.log("⚠️ NO SE DETECTÓ FIRMA NUEVA (Ni pantalla ni archivo)");
+                console.log("Tipo de dato firma:", typeof data.expositor_firma);
+                console.log("Valor firma:", data.expositor_firma);
+            }
+
+            // ---------------------------------------------------------
+            // 🟢 2. PROCESAR EVIDENCIAS (FOTOS)
+            // ---------------------------------------------------------
+            if (data.evidencias && data.evidencias.length > 0) {
+                console.log(`📸 Procesando ${data.evidencias.length} evidencias...`);
+
+                for (let i = 0; i < data.evidencias.length; i++) {
+                    const file = data.evidencias[i];
+
+                    // Verificamos en consola qué estamos a punto de enviar
+                    console.log(`   - Archivo [${i}]:`, file.name, "Tipo:", file.type);
+
+                    // 🟢 SIN VALIDACIONES ESTRICTAS: Simplemente lo agregamos
+                    formData.append('evidencias', file);
+                }
+            } else {
+                console.log("⚠️ data.evidencias está vacío o indefinido");
+                // Intento de rescate: a veces el input file no se registra bien en 'data'
+                // pero si tienes un ref, podrías buscarlo. Por ahora dejémoslo así.
+            }
+
+            // ---------------------------------------------------------
+            // 🟢 3. CAMPOS DE TEXTO SIMPLES
+            // ---------------------------------------------------------
             Object.keys(data).forEach((key) => {
-                // Excluimos lo que mandamos por separado o lo que NO es texto
-                if (key !== 'participantes' && key !== 'expositor_firma' && (key as string) !== 'evidencias') {
-                    const value = data[key as keyof Inputs];
+                const k = key as keyof Inputs; // Casteo seguro
+                if (k !== 'participantes' && k !== 'expositor_firma' && k !== 'evidencias') {
+                    const value = data[k];
                     if (value !== undefined && value !== null) {
                         formData.append(key, String(value));
                     }
                 }
             });
 
-            // 🟢 3. Participantes (Como JSON string)
-            formData.append('participantes', JSON.stringify(data.participantes));
-
-            // 🟢 4. Evidencias (Fotos de Galería)
-            if (evidencias && evidencias.length > 0) {
-                // Usamos el nombre 'evidencias' que configuramos en Multer
-                Array.from(evidencias).forEach((file) => {
-                    formData.append('evidencias', file as File);
-                });
+            // ---------------------------------------------------------
+            // 🟢 4. PARTICIPANTES (JSON String)
+            // ---------------------------------------------------------
+            if (data.participantes) {
+                formData.append('participantes', JSON.stringify(data.participantes));
             }
 
-            // 🚀 ENVÍO ÚNICO
-            const response = await api.post('/capacitaciones', formData);
+            // ---------------------------------------------------------
+            // 🚀 5. ENVÍO A LA API
+            // ---------------------------------------------------------
+            let response;
+
+            // 🟢 EL FIX DEFINITIVO: Configuración de cabeceras
+            // Esto obliga al navegador a enviar los archivos correctamente
+            const config = {
+                headers: {
+                    "Content-Type": undefined,
+                },
+            };
+
+            // 🟢 CORRECCIÓN TS: 'id' ahora viene de useParams
+            if (id) {
+                console.log(`🔄 Actualizando capacitación ID: ${id}...`);
+                // 👇 AQUI AGREGAMOS 'config' COMO TERCER ARGUMENTO
+                response = await api.put(`/capacitaciones/${id}`, formData, config);
+            } else {
+                console.log("✨ Creando nueva capacitación...");
+                // 👇 AQUI AGREGAMOS 'config' COMO TERCER ARGUMENTO
+                response = await api.post('/capacitaciones', formData, config);
+            }
 
             if (response.status === 200 || response.status === 201) {
-                alert('¡Capacitación registrada con éxito! 📄📸');
+                alert(id ? '¡Capacitación actualizada correctamente! 🔄' : '¡Capacitación registrada con éxito! 📄📸');
                 router.push('/dashboard');
             }
 
-        } catch (error: unknown) {
-            console.error("Error al registrar capacitación:", error);
-            // Tu catch con el alert detallado que pusimos antes 
+        } catch (error: unknown) { // 🟢 CORRECCIÓN ESLINT: Usar unknown en lugar de any
+            console.error("🔥 Error al procesar:", error);
+
+            // Verificamos si error tiene la estructura de Axios sin usar 'any' explícito
+            let mensajeError = "Error desconocido";
+            if (error && typeof error === 'object' && 'response' in error) {
+                // @ts-expect-error: Ignoramos error de tipo para acceder a data de forma rápida
+                mensajeError = error.response?.data?.error || error.message;
+            } else if (error instanceof Error) {
+                mensajeError = error.message;
+            }
+
+            alert(`Error: ${mensajeError}`);
         } finally {
             setLoading(false);
         }
