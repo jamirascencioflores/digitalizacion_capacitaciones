@@ -94,12 +94,6 @@ const crearCapacitacion = async (req, res) => {
     // 🟢 CONFIGURACIÓN CLOUDINARY: Carpeta dinámica para organización
     const CARPETA_BASE = "sistema_capacitaciones";
 
-    const rutaEvidencias = `${CARPETA_BASE}/cap_${id}/evidencias`;
-    const result = await uploadFromBuffer(file.buffer, rutaEvidencias);
-
-    const rutaFirma = `${CARPETA_BASE}/cap_${id}/firma`;
-    const resultF = await uploadFromBuffer(firmaFile.buffer, rutaFirma);
-    // Como en CREATE no tenemos ID aún, usamos un identificador temporal único
     const folderTemporal = `${CARPETA_BASE}/temp_${Date.now()}`;
     // 🟢 PASO 2: Procesar archivos (Firma y Evidencias)
     const fotosParaGuardar = [];
