@@ -83,6 +83,14 @@ const subirSiExiste = async (req, campo) => {
 // ==========================================
 
 const crearCapacitacion = async (req, res) => {
+  // 👇 AGREGA ESTO PARA PROBAR
+  console.log("🔍 DIAGNÓSTICO INTERNO:");
+  console.log(
+    "Keys:",
+    cloudinary.config().api_key ? "TIENE KEY ✅" : "NO TIENE KEY ❌",
+  );
+  console.log("Cloud Name:", cloudinary.config().cloud_name);
+  // 👆 FIN DEL DIAGNÓSTIC
   try {
     // 🟢 PASO 1: Extraemos 'evidencias' aquí para que NO se meta en '...resto'
     // Esto evita que Prisma intente buscar una columna 'evidencias' que no existe.
@@ -361,11 +369,11 @@ const obtenerCapacitacion = async (req, res) => {
   }
 };
 
-// --- 4. ACTUALIZAR (PUT) --- 🛡️ VERSIÓN GALERÍA BLINDADA
+// --- 4. ACTUALIZAR (PUT) --- 🛡️ VERSIÓN FINAL CON BACKUP DE FIRMAS
 const actualizarCapacitacion = async (req, res) => {
-  try {
-    const { id } = req.params;
+  const { id } = req.params;
 
+  try {
     // 1. Usamos 'let' para permitir el parseo de participantes si vienen por FormData
     let { participantes, institucion_procedencia, evidencias, ...resto } =
       req.body;
@@ -374,36 +382,55 @@ const actualizarCapacitacion = async (req, res) => {
     const listaParticipantes =
       typeof participantes === "string"
         ? JSON.parse(participantes)
-        : participantes;
+        : participantes || [];
 
-    // 2. Procesar Imágenes (Firma Expositor y Evidencias)
+    // ========================================================================
+    // 🟢 PASO DE SEGURIDAD: BACKUP DE FIRMAS EXISTENTES
+    // Antes de borrar nada, buscamos qué firmas ya existen en la base de datos
+    // ========================================================================
+    const participantesAntiguos = await prisma.participantes.findMany({
+      where: { id_capacitacion: Number(id) },
+      select: { dni: true, firma_url: true },
+    });
+
+    // Creamos un diccionario rápido: { "45678912": "https://res.cloudinary..." }
+    const mapaFirmasBackup = new Map();
+    participantesAntiguos.forEach((p) => {
+      if (p.dni && p.firma_url) {
+        mapaFirmasBackup.set(p.dni.trim(), p.firma_url);
+      }
+    });
+
+    // 2. Procesar Imágenes NUEVAS (Firma Expositor y Evidencias)
     let urlFirmaUpdate = resto.expositor_firma;
     const nuevasFotos = [];
 
     if (req.files) {
       const CARPETA_BASE = "sistema_capacitaciones";
-      const folderProyecto = `${CARPETA_BASE}/cap_${id}`; // Carpeta única por capacitación
-      // Firma nueva del expositor
+      const folderProyecto = `${CARPETA_BASE}/cap_${id}`;
+
+      // A. Firma nueva del expositor
       if (req.files["expositor_firma"]) {
         const f = req.files["expositor_firma"][0];
         const resFirma = await cloudinary.uploader.upload(f.path, {
           folder: `${folderProyecto}/firma_expositor`,
-          public_id: `firma_${id}_${Date.now()}`,
-          use_filename: true, // 🟢 Fuerza a usar la ruta y nombre que enviamos
+          public_id: `firma_expositor_${Date.now()}`, // Nombre seguro
+          use_filename: true,
           unique_filename: false,
           overwrite: true,
-          resource_type: "auto", // 🟢 Asegura que detecte que es una imagen
+          resource_type: "auto",
         });
         urlFirmaUpdate = resFirma.secure_url;
-        // Borrar archivo temporal
+
+        // Limpieza temporal
         if (fs.existsSync(f.path)) fs.unlinkSync(f.path);
       }
 
-      // Evidencias nuevas
+      // B. Evidencias nuevas
       const evidenciasFiles = req.files["evidencias"] || [];
       for (const file of evidenciasFiles) {
         const result = await cloudinary.uploader.upload(file.path, {
-          folder: `${folderProyecto}/evidencias`, // Se guarda en su carpeta cap_XX/evidencias
+          folder: `${folderProyecto}/evidencias`,
           quality: "auto",
           fetch_format: "auto",
         });
@@ -412,48 +439,28 @@ const actualizarCapacitacion = async (req, res) => {
           tipo: "EVIDENCIA_FOTO",
           nombre_archivo: file.originalname,
         });
-        // 🟢 LIMPIEZA: Borrar cada foto temporal tras subirla
+
+        // Limpieza temporal
         if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
       }
     }
 
-    const participantesConFirma = await prisma.participantes.findMany({
-      where: {
-        id_capacitacion: Number(id),
-        firma_url: { not: null },
-      },
-      select: {
-        dni: true,
-        firma_url: true,
-      },
-    });
-    for (const p of participantesConFirma) {
-      await prisma.trabajadores.updateMany({
-        where: { dni: p.dni.trim() },
-        data: { firma_url: p.firma_url },
-      });
-    }
-
-    // 🟢 LIMPIEZA DE DATOS: Evitamos enviar campos que NO existen en Prisma
+    // 🟢 LIMPIEZA DE DATOS (Evitamos campos que no existen en Prisma)
     const {
       id_capacitacion,
       creado_por,
       fecha_registro,
       documentos,
       faltantes,
-      cobertura, // 🔥 CLAVE: eliminar cobertura
+      cobertura,
       ...datosLimpios
     } = resto;
 
+    // Eliminar campos calculados que no van a la BD
     delete datosLimpios.cobertura;
     delete datosLimpios.faltantes;
 
-    // 3. Actualización Principal de la Capacitación
-    await prisma.participantes.deleteMany({
-      where: {
-        id_capacitacion: Number(id),
-      },
-    });
+    // 3. Actualización Principal de la Capacitación (DATOS GENERALES)
     const capacitacionActualizada = await prisma.capacitaciones.update({
       where: { id_capacitacion: Number(id) },
       data: {
@@ -461,7 +468,7 @@ const actualizarCapacitacion = async (req, res) => {
         institucion_procedencia: institucion_procedencia || null,
         ...(urlFirmaUpdate ? { expositor_firma: urlFirmaUpdate } : {}),
 
-        // Forzar formatos correctos para campos de fecha y hora
+        // Formatos de fecha
         fecha: resto.fecha ? new Date(resto.fecha) : undefined,
         hora_inicio: resto.hora_inicio
           ? procesarHora(resto.hora_inicio)
@@ -470,38 +477,60 @@ const actualizarCapacitacion = async (req, res) => {
           ? procesarHora(resto.hora_termino)
           : undefined,
 
-        // Totales
+        // Totales numéricos
         total_hombres: Number(resto.total_hombres) || 0,
         total_mujeres: Number(resto.total_mujeres) || 0,
         total_trabajadores: Number(resto.total_trabajadores) || 0,
 
-        // Relación con fotos nuevas enviadas en este request
+        // Agregar nuevas fotos a la galería existente
         documentos: {
           create: nuevasFotos,
         },
       },
     });
 
-    if (listaParticipantes?.length) {
-      await prisma.participantes.createMany({
-        data: listaParticipantes.map((p, index) => ({
+    // 4. GESTIÓN DE PARTICIPANTES (Borrado y Re-creación Inteligente)
+
+    // Primero borramos los antiguos
+    await prisma.participantes.deleteMany({
+      where: { id_capacitacion: Number(id) },
+    });
+
+    // Preparamos la nueva lista fusionando datos nuevos con el BACKUP de firmas
+    if (listaParticipantes?.length > 0) {
+      const participantesParaCrear = listaParticipantes.map((p, index) => {
+        const dni = p.dni ? p.dni.trim() : "";
+
+        // LÓGICA DE RECUPERACIÓN:
+        // 1. Si viene una url nueva, úsala.
+        // 2. Si no viene url, busca en el backup.
+        // 3. Si no hay backup, null.
+        const firmaFinal = p.firma_url || mapaFirmasBackup.get(dni) || null;
+
+        return {
           id_capacitacion: Number(id),
           numero: index + 1,
-          dni: p.dni,
+          dni: dni,
           apellidos_nombres: p.apellidos_nombres,
           area: p.area,
           cargo: p.cargo,
           genero: p.genero || "M",
-          firma_url: p.firma_url || null,
+          firma_url: firmaFinal, // Aquí aplicamos el backup
           condicion: p.condicion || null,
-        })),
+        };
+      });
+
+      // Insertamos masivamente
+      await prisma.participantes.createMany({
+        data: participantesParaCrear,
       });
     }
 
-    // 4. Sincronización Maestra: subir firmas y actualizar trabajadores
+    // 5. PROCESAMIENTO DE FIRMAS NUEVAS (Base64 dibujadas en el momento)
+    // Esto es para cuando firman en la tablet al momento de editar
     if (listaParticipantes && Array.isArray(listaParticipantes)) {
       for (const p of listaParticipantes) {
-        // 🟢 Caso 1: firma dibujada (base64)
+        // A. Firma DIBUJADA (Base64) - Esto sobrescribe cualquier cosa anterior
         if (p.firma_base64 && p.firma_base64.startsWith("data:image")) {
           const uploadResult = await cloudinary.uploader.upload(
             p.firma_base64,
@@ -511,44 +540,32 @@ const actualizarCapacitacion = async (req, res) => {
             },
           );
 
-          const firmaUrl = uploadResult.secure_url;
+          const firmaUrlNueva = uploadResult.secure_url;
 
-          // 🔹 Actualizar firma en participantes
+          // Actualizar participante específico
           await prisma.participantes.updateMany({
-            where: {
-              dni: p.dni,
-              id_capacitacion: Number(id),
-            },
-            data: {
-              firma_url: firmaUrl,
-            },
+            where: { dni: p.dni, id_capacitacion: Number(id) },
+            data: { firma_url: firmaUrlNueva },
           });
 
-          // 🔹 Actualizar firma en maestro_trabajadores
+          // Actualizar maestro de trabajadores (para futuras capacitaciones)
           await prisma.trabajadores.updateMany({
             where: { dni: p.dni.trim() },
-            data: { firma_url: firmaUrl },
-          });
-        }
-
-        // 🟢 Caso 2: firma ya existente (subida manualmente)
-        else if (p.firma_url && p.dni) {
-          await prisma.trabajadores.updateMany({
-            where: { dni: p.dni.trim() },
-            data: { firma_url: p.firma_url },
+            data: { firma_url: firmaUrlNueva },
           });
         }
       }
     }
 
-    // 5. Respuesta Exitosa
+    // 6. Respuesta Exitosa
     res.json({
-      mensaje: "Capacitación y firmas de trabajadores actualizadas con éxito",
+      mensaje: "Capacitación actualizada correctamente",
       data: capacitacionActualizada,
     });
   } catch (error) {
-    console.error("Error crítico en el controlador:", error);
-    // 🔴 LIMPIEZA DE EMERGENCIA EN CASO DE ERROR
+    console.error("Error crítico en actualizarCapacitacion:", error);
+
+    // Limpieza de emergencia si falló algo
     if (req.files) {
       Object.values(req.files)
         .flat()
@@ -556,6 +573,7 @@ const actualizarCapacitacion = async (req, res) => {
           if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
         });
     }
+
     res.status(500).json({
       error: "Error interno al procesar la actualización",
       detalle: error.message,

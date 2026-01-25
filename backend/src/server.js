@@ -1,10 +1,10 @@
 // backend/src/server.js
+require("dotenv").config(); // 🟢 ESTA DEBE SER LA LÍNEA 1 OBLIGATORIAMENTE
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
-const dotenv = require("dotenv");
 
-dotenv.config();
+//dotenv.config();
 
 // Importar rutas
 const authRoutes = require("./routes/auth.routes");
