@@ -1,25 +1,59 @@
 // frontend/app/dashboard/layout.tsx
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react'; // 🟢 Agregamos useEffect
+import { useRouter } from 'next/navigation'; // 🟢 Agregamos useRouter
 import Image from 'next/image';
-import Sidebar from '@/components/Sidebar'; // <--- Importamos el componente
+import Sidebar from '@/components/Sidebar';
 import { Menu, X } from 'lucide-react';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+    const router = useRouter();
     const [sidebarOpen, setSidebarOpen] = useState(false);
 
+    // 🟢 1. Estado de autorización (Empieza en falso para no mostrar nada aún)
+    const [authorized, setAuthorized] = useState(false);
+
+    // 🟢 2. El "Guardia de Seguridad"
+    useEffect(() => {
+        const token = localStorage.getItem('token');
+
+        if (!token) {
+            router.push('/login');
+        } else {
+            // Verificamos si ya está autorizado para evitar re-renders innecesarios
+            if (!authorized) {
+                setAuthorized(true);
+            }
+        }
+
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // 👈 Usamos [] para que solo verifique AL ENTRAR (Montar), no a cada rato.
+
+    // 🟢 3. Pantalla de Carga (mientras verifica)
+    // Esto evita que el dashboard "parpadee" antes de redirigir si no está logueado
+    if (!authorized) {
+        return (
+            <div className="flex h-screen items-center justify-center bg-gray-50">
+                <div className="flex flex-col items-center gap-3">
+                    <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                    <span className="text-sm font-medium text-gray-500 animate-pulse">Verificando credenciales...</span>
+                </div>
+            </div>
+        );
+    }
+
+    // 🟢 4. Si pasó la seguridad, renderizamos TU DISEÑO ORIGINAL
     return (
         <div className="flex min-h-screen bg-gray-100">
 
             {/* --- COMPONENTE SIDEBAR --- */}
-            {/* Le pasamos el estado y la función para cerrar */}
             <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
             {/* --- CONTENIDO PRINCIPAL --- */}
             <div className="flex-1 flex flex-col h-screen overflow-hidden">
 
-                {/* Header Móvil (Solo visible en celular) */}
+                {/* Header Móvil */}
                 <header className="flex h-16 items-center justify-between bg-white px-4 shadow-sm md:hidden shrink-0 z-40 relative">
                     <span className="font-bold text-green-800 text-sm">AGRÍCOLA PAMPA BAJA</span>
                     <button onClick={() => setSidebarOpen(!sidebarOpen)} className="text-gray-600">
@@ -27,10 +61,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     </button>
                 </header>
 
-                {/* Área de Trabajo (Scrollable) */}
+                {/* Área de Trabajo */}
                 <main className="flex-1 overflow-y-auto bg-gray-50 p-4 md:p-8 scroll-smooth flex flex-col">
 
-                    {/* Aquí se renderizan las páginas (Reportes, Crear, Trabajadores, etc) */}
+                    {/* Contenido de las páginas */}
                     <div className="flex-1">
                         {children}
                     </div>
