@@ -1,13 +1,14 @@
-// frontend/app/(auth)/login/page.tsx
 'use client';
 
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link'; // 🟢 1. Importamos Link
 import { useAuth } from '@/context/AuthContext';
-import { Eye, EyeOff, Lock, User, AlertCircle, CheckCircle2, X } from 'lucide-react';
+// 🟢 2. Agregamos ArrowLeft a los iconos
+import { Eye, EyeOff, Lock, User, AlertCircle, CheckCircle2, X, ArrowLeft } from 'lucide-react';
 import api from '@/services/api';
-import { AxiosError } from 'axios'; // 🟢 1. Importamos AxiosError para tipado estricto
+import { AxiosError } from 'axios';
 
 type LoginFormInputs = {
   usuario: string;
@@ -33,10 +34,9 @@ export default function LoginPage() {
     try {
       await login(data.usuario, data.contrasena);
       router.push('/dashboard');
-    } catch (err: unknown) { // 🟢 2. Usamos 'unknown' en lugar de 'any'
+    } catch (err: unknown) {
       let msg = 'Error de conexión';
 
-      // Validación estricta de tipos
       if (err instanceof AxiosError && err.response?.data?.error) {
         msg = err.response.data.error;
       } else if (err instanceof Error) {
@@ -57,16 +57,27 @@ export default function LoginPage() {
     try {
       await api.post('/auth/recuperar', { usuario: recoveryUser });
       setRecoveryStatus('success');
-    } catch { // 🟢 3. Quitamos la variable 'error' que no se usaba
+    } catch {
       setRecoveryStatus('error');
     }
   };
 
   return (
-    // 🟢 4. Actualizamos la clase del gradiente (bg-linear-to-br)
     <div className="flex min-h-screen items-center justify-center bg-linear-to-br from-blue-50 to-indigo-100 p-4">
 
-      <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-xl border border-white/50">
+      <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-xl border border-white/50 relative">
+
+        {/* 🟢 3. BOTÓN PARA VOLVER AL INICIO */}
+        <div className="mb-6">
+          <Link
+            href="/"
+            className="inline-flex items-center text-sm text-gray-500 hover:text-blue-600 transition-colors font-medium group"
+          >
+            <ArrowLeft size={16} className="mr-1 group-hover:-translate-x-1 transition-transform" />
+            Volver al inicio
+          </Link>
+        </div>
+
         <div className="mb-8 text-center">
           <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-blue-100 text-blue-600 mb-4">
             <Lock size={24} />
@@ -93,7 +104,7 @@ export default function LoginPage() {
             {errors.usuario && <span className="text-xs text-red-500 mt-1 block">{errors.usuario.message}</span>}
           </div>
 
-          {/* INPUT CONTRASEÑA CON OJO */}
+          {/* INPUT CONTRASEÑA */}
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">Contraseña</label>
             <div className="relative">
@@ -144,7 +155,7 @@ export default function LoginPage() {
         </form>
       </div>
 
-      {/* MODAL DE RECUPERACIÓN */}
+      {/* MODAL DE RECUPERACIÓN (Se mantiene igual) */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
           <div className="w-full max-w-sm bg-white rounded-xl shadow-2xl overflow-hidden scale-100 animate-in zoom-in-95">
