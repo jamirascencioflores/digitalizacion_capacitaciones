@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import { Eye, EyeOff, Lock, User, AlertCircle, CheckCircle2, X } from 'lucide-react';
+import { Eye, EyeOff, Lock, User, AlertCircle, CheckCircle2, X, ArrowLeft, ShieldCheck } from 'lucide-react';
 import api from '@/services/api';
 import { AxiosError } from 'axios'; // 🟢 1. Importamos AxiosError para tipado estricto
 
@@ -13,6 +13,10 @@ type LoginFormInputs = {
   usuario: string;
   contrasena: string;
 };
+
+import AnimatedLoginBackground from '@/components/ui/AnimatedLoginBackground';
+
+// ... imports ...
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -28,21 +32,19 @@ export default function LoginPage() {
   const [recoveryStatus, setRecoveryStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
 
   const onSubmit = async (data: LoginFormInputs) => {
+    // ... onSubmit logic ...
     setLoading(true);
     setErrorGlobal(null);
     try {
       await login(data.usuario, data.contrasena);
       router.push('/dashboard');
-    } catch (err: unknown) { // 🟢 2. Usamos 'unknown' en lugar de 'any'
+    } catch (err: unknown) {
       let msg = 'Error de conexión';
-
-      // Validación estricta de tipos
       if (err instanceof AxiosError && err.response?.data?.error) {
         msg = err.response.data.error;
       } else if (err instanceof Error) {
         msg = err.message;
       }
-
       setErrorGlobal(msg);
     } finally {
       setLoading(false);
@@ -50,6 +52,7 @@ export default function LoginPage() {
   };
 
   const handleRecoverySubmit = async (e: React.FormEvent) => {
+    // ... handleRecoverySubmit logic ...
     e.preventDefault();
     if (!recoveryUser) return;
 
@@ -57,91 +60,120 @@ export default function LoginPage() {
     try {
       await api.post('/auth/recuperar', { usuario: recoveryUser });
       setRecoveryStatus('success');
-    } catch { // 🟢 3. Quitamos la variable 'error' que no se usaba
+    } catch {
       setRecoveryStatus('error');
     }
   };
 
   return (
-    // 🟢 4. Actualizamos la clase del gradiente (bg-linear-to-br)
-    <div className="flex min-h-screen items-center justify-center bg-linear-to-br from-blue-50 to-indigo-100 p-4">
+    <AnimatedLoginBackground>
 
-      <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-xl border border-white/50">
-        <div className="mb-8 text-center">
-          <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-blue-100 text-blue-600 mb-4">
-            <Lock size={24} />
-          </div>
-          <h1 className="text-2xl font-bold text-gray-900">Sistema de Capacitación</h1>
-          <p className="mt-2 text-sm text-gray-500">Ingresa tus credenciales para continuar</p>
-        </div>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-          {/* INPUT USUARIO */}
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">Usuario</label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
-                <User size={18} />
-              </div>
-              <input
-                type="text"
-                placeholder="Usuario"
-                {...register('usuario', { required: 'El usuario es obligatorio' })}
-                className="w-full rounded-lg border border-gray-300 pl-10 pr-4 py-2.5 text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all"
-              />
+      <div className="w-full max-w-md relative z-20">
+
+        {/* Tarjeta Glassmorphism Profesional */}
+        <div className="bg-white/90 backdrop-blur-xl p-8 rounded-3xl shadow-2xl border border-white/50 relative">
+
+          {/* Botón de Regresar (Dentro del Card) */}
+          <button
+            onClick={() => router.push('/')}
+            className="absolute top-4 left-4 flex items-center gap-2 p-2 px-3 text-slate-500 hover:text-blue-700 hover:bg-blue-50/80 rounded-full transition-all group font-medium text-sm"
+          >
+            <ArrowLeft size={18} className="group-hover:-translate-x-0.5 transition-transform" />
+            <span>Volver al sitio</span>
+          </button>
+
+          <div className="mb-8 text-center">
+            <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-500/30 mb-5 transform rotate-3">
+              <ShieldCheck size={28} />
             </div>
-            {errors.usuario && <span className="text-xs text-red-500 mt-1 block">{errors.usuario.message}</span>}
+            <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Bienvenido de nuevo</h1>
+            <p className="mt-2 text-sm text-slate-500 font-medium">Ingresa a tu cuenta para gestionar el sistema</p>
           </div>
 
-          {/* INPUT CONTRASEÑA CON OJO */}
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">Contraseña</label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
-                <Lock size={18} />
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+            {/* INPUT USUARIO - Diseño Clean */}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Usuario</label>
+              <div className="relative group">
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-blue-500 transition-colors">
+                  <User size={18} />
+                </div>
+                <input
+                  type="text"
+                  placeholder="Ej. admin"
+                  {...register('usuario', { required: 'El usuario es obligatorio' })}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 pl-11 pr-4 py-3 text-slate-700 outline-none transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 focus:bg-white"
+                />
               </div>
-              <input
-                type={showPassword ? "text" : "password"}
-                placeholder="••••••••"
-                {...register('contrasena', { required: 'La contraseña es obligatoria' })}
-                className="w-full rounded-lg border border-gray-300 pl-10 pr-10 py-2.5 text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 cursor-pointer"
-              >
-                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
+              {errors.usuario && <span className="text-xs font-medium text-red-500 ml-1">{errors.usuario.message}</span>}
             </div>
-            {errors.contrasena && <span className="text-xs text-red-500 mt-1 block">{errors.contrasena.message}</span>}
 
-            <div className="mt-2 flex justify-end">
+            {/* INPUT CONTRASEÑA - Diseño Clean */}
+            <div className="space-y-1.5">
+              <div className="flex justify-between items-center">
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Contraseña</label>
+              </div>
+
+              <div className="relative group">
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-blue-500 transition-colors">
+                  <Lock size={18} />
+                </div>
+                <input
+                  type={showPassword ? "text" : "password"}
+                  placeholder="••••••••"
+                  {...register('contrasena', { required: 'La contraseña es obligatoria' })}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 pl-11 pr-12 py-3 text-slate-700 outline-none transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 focus:bg-white"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer transition-colors"
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+              {errors.contrasena && <span className="text-xs font-medium text-red-500 ml-1">{errors.contrasena.message}</span>}
+            </div>
+
+            <div className="flex justify-end">
               <button
                 type="button"
                 onClick={() => { setShowModal(true); setRecoveryStatus('idle'); setRecoveryUser(''); }}
-                className="text-sm font-medium text-blue-600 hover:text-blue-700 hover:underline"
+                className="text-xs font-semibold text-blue-600 hover:text-blue-700 transition-colors"
               >
                 ¿Olvidaste tu contraseña?
               </button>
             </div>
-          </div>
 
-          {errorGlobal && (
-            <div className="rounded-lg bg-red-50 p-3 flex items-center gap-2 text-sm text-red-700 border border-red-100 animate-in fade-in slide-in-from-top-1">
-              <AlertCircle size={18} />
-              {errorGlobal}
-            </div>
-          )}
+            {errorGlobal && (
+              <div className="rounded-xl bg-red-50 p-3 flex items-start gap-3 text-sm text-red-600 border border-red-100 animate-in fade-in slide-in-from-top-2">
+                <AlertCircle size={18} className="shrink-0 mt-0.5" />
+                <span className="font-medium">{errorGlobal}</span>
+              </div>
+            )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className={`w-full rounded-lg bg-blue-600 px-4 py-2.5 font-bold text-white shadow-md shadow-blue-200 transition-all hover:bg-blue-700 hover:shadow-lg active:scale-[0.98] ${loading ? 'cursor-not-allowed opacity-70' : ''}`}
-          >
-            {loading ? 'Validando...' : 'Ingresar al Sistema'}
-          </button>
-        </form>
+            <button
+              type="submit"
+              disabled={loading}
+              className={`w-full rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-3.5 font-bold text-white shadow-lg shadow-blue-500/30 transition-all hover:shadow-blue-500/40 hover:scale-[1.02] active:scale-[0.98] ${loading ? 'cursor-not-allowed opacity-80' : ''}`}
+            >
+              {loading ? (
+                <div className="flex items-center justify-center gap-2">
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span>Validando...</span>
+                </div>
+              ) : (
+                'Iniciar Sesión'
+              )}
+            </button>
+          </form>
+        </div>
+
+        <p className="text-center text-slate-400/80 text-xs mt-6">
+          &copy; {new Date().getFullYear()} FormApp Inc. Todos los derechos reservados.
+        </p>
+
       </div>
 
       {/* MODAL DE RECUPERACIÓN */}
@@ -187,6 +219,6 @@ export default function LoginPage() {
           </div>
         </div>
       )}
-    </div>
+    </AnimatedLoginBackground>
   );
 }
