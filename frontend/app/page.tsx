@@ -1,7 +1,47 @@
-// frontend/app/page.tsx
-import { redirect } from 'next/navigation';
+import Navbar from '@/components/landing/Navbar';
+import Hero from '@/components/landing/Hero';
+import AppPreview from '@/components/landing/AppPreview';
+import Features from '@/components/landing/Features';
+import AboutSection from '@/components/landing/AboutSection';
+import BenefitsSection from '@/components/landing/BenefitsSection';
+import ContactSection from '@/components/landing/ContactSection';
+import Footer from '@/components/landing/Footer';
 
+// página principal
 export default function Home() {
-  // Redirigir automáticamente al login apenas entran a la web
-  redirect('/login');
+  console.log('Page Rebuild Trigger');
+  return (
+    <main className="min-h-screen bg-white overflow-x-hidden">
+      {/* navegación */}
+      <Navbar />
+
+      {/* contenedor de fondo */}
+      <div className="relative overflow-hidden bg-slate-50">
+        {/* patrón de fondo */}
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]"></div>
+
+        {/* iluminación superior */}
+        <div className="absolute left-0 right-0 top-0 m-auto h-[310px] w-[310px] rounded-full bg-blue-400 opacity-20 blur-[100px] animate-pulse"></div>
+
+        {/* iluminación central */}
+        <div className="absolute right-0 top-[40%] h-[400px] w-[400px] rounded-full bg-purple-400 opacity-10 blur-[120px]"></div>
+
+        <Hero />
+
+        <AboutSection />
+
+        <div id="servicios">
+          <Features />
+        </div>
+      </div>
+
+      <BenefitsSection />
+
+      {/* sección de contacto */}
+      <ContactSection />
+
+      {/* pie de página */}
+      <Footer />
+    </main>
+  );
 }

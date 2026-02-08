@@ -37,7 +37,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 
     return (
         <>
-            {/* SIDEBAR ASIDE */}
+            {/* barra lateral */}
             <aside className={`
         fixed inset-y-0 left-0 z-50 w-64 transform bg-white shadow-xl 
         transition-transform duration-300 ease-in-out flex flex-col shrink-0
@@ -45,7 +45,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         md:relative md:translate-x-0
       `}>
 
-                {/* --- LOGO EMPRESA --- */}
+                {/* logo de empresa */}
                 <div className="flex flex-col items-center justify-center py-6 border-b border-gray-200 bg-white">
                     <div className="relative h-16 w-40 mb-3">
                         <Image
@@ -62,7 +62,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                     </div>
                 </div>
 
-                {/* --- NAVEGACIÓN --- */}
+                {/* navegación */}
                 <nav className="mt-6 space-y-1 px-3 flex-1 overflow-y-auto">
 
                     <Link href="/dashboard" className={linkClass('/dashboard')} onClick={onClose}>
@@ -70,7 +70,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                         <span>Inicio</span>
                     </Link>
 
-                    {/* Nueva Capacitación: Oculto para el Auditor */}
+                    {/* nueva capacitación (oculto para auditor) */}
                     {userRole !== 'auditor' && (
                         <Link href="/dashboard/capacitaciones/crear" className={linkClass('/dashboard/capacitaciones/crear')} onClick={onClose}>
                             <PlusCircle size={20} className="group-hover:text-green-600" />
@@ -78,7 +78,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                         </Link>
                     )}
 
-                    {/* --- NUEVO: GESTIÓN DE CUMPLIMIENTO (Admin y Auditor) --- */}
+                    {/* gestión de cumplimiento */}
                     {(userRole === 'administrador' || userRole === 'auditor') && (
                         <Link href="/dashboard/gestion" className={linkClass('/dashboard/gestion')} onClick={onClose}>
                             <ClipboardCheck size={20} className="group-hover:text-green-600" />
@@ -91,18 +91,18 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                         <span>Reportes</span>
                     </Link>
 
-                    {/* SECCIÓN SOLO ADMIN */}
+                    {/* sección de administración */}
                     {userRole === 'administrador' && (
                         <>
                             <div className="my-4 border-t border-gray-100 mx-2"></div>
                             <p className="px-3 text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Administración</p>
 
-                            {/* 🟢 NUEVO: ENLACE A ALERTAS CON GLOBO DE NOTIFICACIÓN */}
+                            {/* alertas y claves */}
                             <Link href="/dashboard/alertas" className={`${linkClass('/dashboard/alertas')} relative`} onClick={onClose}>
                                 <ShieldAlert size={20} className={alertasPendientes > 0 ? "text-red-500 animate-pulse" : "group-hover:text-red-600"} />
                                 <span>Alertas / Claves</span>
 
-                                {/* GLOBO ROJO FLOTANTE */}
+                                {/* notificaciones pendientes */}
                                 {alertasPendientes > 0 && (
                                     <span className="absolute right-4 bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full animate-in zoom-in">
                                         {alertasPendientes}
@@ -121,9 +121,9 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                             </Link>
                         </>
                     )}
-                </nav> {/* <--- 🔴 AQUÍ FALTABA EL CIERRE DE NAV */}
+                </nav>
 
-                {/* --- USUARIO Y SALIR --- */}
+                {/* usuario y cerrar sesión */}
                 <div className="p-4 border-t border-gray-200">
                     <div className="flex items-center gap-3 mb-4 px-2">
                         <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-700 font-bold text-xs border border-green-200">
@@ -144,7 +144,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                 </div>
             </aside>
 
-            {/* --- FONDO OSCURO MÓVIL (Overlay) --- */}
+            {/* fondo oscuro móvil */}
             {isOpen && (
                 <div
                     onClick={onClose}
