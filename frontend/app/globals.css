@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
@@ -13,11 +15,10 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+.dark {
+  --background: #0B1121;
+  /* Tailwindslate-900 / gray-900 tone */
+  --foreground: #f8fafc;
 }
 
 body {
@@ -52,37 +53,67 @@ body {
   animation: fadeInUp 0.6s ease-out forwards;
 }
 
-/* barra de desplazamiento */
+/* barra de desplazamiento global refinada */
 ::-webkit-scrollbar {
-  width: 10px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f5f9;
-  /* fondo */
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #2563eb;
-  /* color principal */
-  border-radius: 9999px;
-  border: 2px solid #f1f5f9;
-  /* efecto de borde */
+  background: #cbd5e1;
+  /* slate-300 */
+  border-radius: 10px;
+  transition: background 0.3s;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #1d4ed8;
-  /* color al pasar el mouse */
+  background: #94a3b8;
+  /* slate-400 */
 }
 
-/* modo oscuro */
-@media (prefers-color-scheme: dark) {
-  ::-webkit-scrollbar-track {
-    background: #0f172a;
-    /* fondo oscuro */
-  }
+/* Scrollbar en Modo Oscuro */
+.dark ::-webkit-scrollbar-thumb {
+  background: #334155;
+  /* slate-700 */
+}
 
-  ::-webkit-scrollbar-thumb {
-    border-color: #0f172a;
-  }
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+  /* slate-600 */
+}
+
+/* Soporte para Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+.dark * {
+  scrollbar-color: #334155 transparent;
+}
+
+/* Clase de utilidad para scrollbars delgados específicos */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+  /* Aún más delgado para menús internos */
+}
+
+.custom-scrollbar {
+  scrollbar-width: thin;
+}
+
+/* Ocultar el ícono nativo de contraseña de Edge/IE */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+  display: none;
+}
+
+/* Ocultar el ícono de otros WebKit si aplicara */
+input[type="password"]::-webkit-clear-button,
+input[type="password"]::-webkit-reveal {
+  display: none;
 }
