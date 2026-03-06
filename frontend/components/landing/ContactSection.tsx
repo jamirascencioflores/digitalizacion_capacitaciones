@@ -78,7 +78,7 @@ export default function ContactSection() {
                                     </div>
                                     <div>
                                         <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold mb-1">Escríbenos</p>
-                                        <p className="text-white font-medium hover:text-emerald-400 transition-colors cursor-pointer">contacto@formapp.com</p>
+                                        <p className="text-white font-medium hover:text-emerald-400 transition-colors cursor-pointer">contacto@nosplanet.com</p>
                                     </div>
                                 </div>
 
@@ -163,7 +163,7 @@ export default function ContactSection() {
                                             onFocus={() => setFocusedField('email')}
                                             onBlur={() => setFocusedField(null)}
                                             className="w-full pl-12 pr-4 py-3 bg-slate-950/50 border border-slate-800 rounded-xl focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none transition-all placeholder:text-slate-600 text-white"
-                                            placeholder="nombre@empresa.com"
+                                            placeholder="nombre@nosplanet.com"
                                             required
                                         />
                                     </div>
