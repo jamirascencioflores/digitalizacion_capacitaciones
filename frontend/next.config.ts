@@ -9,6 +9,7 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  optimizePackageImports: ['lucide-react', 'recharts'],
 };
 
 export default nextConfig;
