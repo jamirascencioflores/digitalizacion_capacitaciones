@@ -219,7 +219,7 @@ export default function LoginPage() {
                   </div>
                   <h4 className="text-xl font-bold text-slate-800">¡Solicitud Enviada!</h4>
                   <p className="text-slate-500 mt-3 text-sm leading-relaxed">
-                    Si el usuario <span className="font-semibold text-slate-700">"{recoveryUser}"</span> está registrado, hemos enviado un enlace a su correo para restablecer la contraseña.
+                    Si el usuario <span className="font-semibold text-slate-700">&quot;{recoveryUser}&quot;</span> está registrado, hemos enviado un enlace a su correo para restablecer la contraseña.
                   </p>
                   <div className="bg-blue-50/50 rounded-xl p-4 mt-6 border border-blue-100/50">
                     <p className="text-xs text-blue-700 font-medium">
