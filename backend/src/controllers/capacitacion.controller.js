@@ -1,6 +1,6 @@
 // backend/src/controllers/capacitacion.controller.js
 const prisma = require("../utils/db");
-const ExcelJS = require("exceljs");
+let ExcelJS = null; // Lazy load
 const cloudinary = require("../config/cloudinary");
 const path = require("path");
 const fs = require("fs");
@@ -632,6 +632,7 @@ const exportarExcel = async (req, res) => {
 
     const logoPath = path.join(process.cwd(), "templates", "logo.png");
     let logoId = null;
+    if (!ExcelJS) ExcelJS = require("exceljs");
     const workbook = new ExcelJS.Workbook();
     workbook.creator = "Sistema SST";
     workbook.created = new Date();
@@ -695,11 +696,9 @@ const exportarExcel = async (req, res) => {
       sheet.getCell("A6").value = "FECHA:";
       sheet.getCell("B6").value = new Date(cap.fecha).toLocaleDateString();
       sheet.getCell("C6").value = "HORARIO:";
-      sheet.getCell("D6").value = `${
-        cap.hora_inicio ? cap.hora_inicio.toISOString().substring(11, 16) : ""
-      } - ${
-        cap.hora_termino ? cap.hora_termino.toISOString().substring(11, 16) : ""
-      }`;
+      sheet.getCell("D6").value = `${cap.hora_inicio ? cap.hora_inicio.toISOString().substring(11, 16) : ""
+        } - ${cap.hora_termino ? cap.hora_termino.toISOString().substring(11, 16) : ""
+        }`;
       sheet.getCell("A6").font = { bold: true };
       sheet.getCell("C6").font = { bold: true };
 
