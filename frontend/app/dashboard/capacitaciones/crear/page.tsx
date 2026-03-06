@@ -9,6 +9,7 @@ import Image from 'next/image';
 import api from '@/services/api';
 import { getEmpresaConfig } from '@/services/empresa.service';
 import Select from 'react-select';
+import { useTheme } from 'next-themes';
 import {
     ArrowLeft, Save, UserPlus, Trash2, FileText, Clock, Briefcase,
     Building2, CheckCircle2, UploadCloud, Loader2, Image as ImageIcon,
@@ -103,6 +104,12 @@ export default function CrearCapacitacionPage() {
     const [loading, setLoading] = useState(false);
     const [uploadingRow, setUploadingRow] = useState<number | null>(null);
     const { user, loading: authLoading } = useAuth();
+    const { theme } = useTheme();
+    const [mounted, setMounted] = useState(false);
+
+    useEffect(() => {
+        setMounted(true);
+    }, []);
 
     // --- ESTADOS ---
     const [planes, setPlanes] = useState<PlanItem[]>([]);
@@ -291,7 +298,7 @@ export default function CrearCapacitacionPage() {
         // 3. 🟢 Actualizamos FORMULARIO
         setValue("evidencias", updatedFiles as unknown as FileList, { shouldValidate: true });
     };
-    
+
     // --- LOGICA TABLA INTELIGENTE (OPCIONES DINÁMICAS) ---
     const getOpcionesFila = (index: number) => {
         const filaActual = participantesWatch[index];
@@ -549,10 +556,40 @@ export default function CrearCapacitacionPage() {
 
     if (authLoading || user?.rol === 'Auditor') return null;
 
+    const isDark = mounted && theme === 'dark';
+
     const customStyles = {
-        control: (base: Record<string, unknown>) => ({ ...base, minHeight: '30px', fontSize: '12px' }),
-        input: (base: Record<string, unknown>) => ({ ...base, margin: 0, padding: 0 }),
-        menu: (base: Record<string, unknown>) => ({ ...base, zIndex: 9999 })
+        control: (base: Record<string, unknown>) => ({
+            ...base,
+            minHeight: '30px',
+            fontSize: '12px',
+            backgroundColor: isDark ? '#1e293b' : 'white',
+            borderColor: isDark ? '#334155' : '#e2e8f0',
+            color: isDark ? '#f8fafc' : '#1e293b'
+        }),
+        singleValue: (base: Record<string, unknown>) => ({
+            ...base,
+            color: isDark ? '#f8fafc' : '#1e293b'
+        }),
+        input: (base: Record<string, unknown>) => ({
+            ...base,
+            margin: 0,
+            padding: 0,
+            color: isDark ? '#f8fafc' : '#1e293b'
+        }),
+        menu: (base: Record<string, unknown>) => ({
+            ...base,
+            zIndex: 9999,
+            backgroundColor: isDark ? '#1e293b' : 'white',
+        }),
+        option: (base: Record<string, unknown>, state: { isFocused: boolean }) => ({
+            ...base,
+            backgroundColor: state.isFocused
+                ? (isDark ? '#334155' : '#f1f5f9')
+                : (isDark ? '#1e293b' : 'white'),
+            color: isDark ? '#f8fafc' : '#1e293b',
+            cursor: 'pointer'
+        })
     };
 
 
@@ -663,15 +700,19 @@ export default function CrearCapacitacionPage() {
             {/* MODAL FIRMA */}
             {indiceFirmaActiva !== null && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
-                        <div className="bg-gray-100 px-4 py-3 border-b flex justify-between items-center">
-                            <h3 className="font-bold text-gray-800 flex items-center gap-2"><PenTool size={18} /> Firma Digital</h3>
-                            <button onClick={cerrarModalFirma}><X size={24} className="text-gray-500 hover:text-red-500" /></button>
+                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md overflow-hidden border border-gray-100 dark:border-slate-700">
+                        <div className="bg-gray-100 dark:bg-slate-900/50 px-4 py-3 border-b border-gray-100 dark:border-slate-700 flex justify-between items-center">
+                            <h3 className="font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2"><PenTool size={18} /> Firma Digital</h3>
+                            <button onClick={cerrarModalFirma}><X size={24} className="text-gray-500 hover:text-red-500 transition-colors" /></button>
                         </div>
-                        <div className="p-4 bg-white"><div className="border-2 border-dashed rounded-lg bg-gray-50"><SignaturePad ref={workerPadRef} /></div></div>
-                        <div className="p-4 border-t bg-gray-50 flex justify-end gap-3">
-                            <button onClick={() => workerPadRef.current?.clear()} className="px-4 py-2 text-gray-600 rounded-lg text-sm">Limpiar</button>
-                            <button onClick={guardarFirmaModal} className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold">Aceptar</button>
+                        <div className="p-4 bg-white dark:bg-slate-800">
+                            <div className="border-2 border-dashed rounded-lg bg-gray-50 dark:bg-slate-900/50 border-gray-200 dark:border-slate-700">
+                                <SignaturePad ref={workerPadRef} />
+                            </div>
+                        </div>
+                        <div className="p-4 border-t border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/50 flex justify-end gap-3">
+                            <button onClick={() => workerPadRef.current?.clear()} className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 rounded-lg text-sm transition-colors">Limpiar</button>
+                            <button onClick={guardarFirmaModal} className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold shadow-lg shadow-blue-500/20 transition-all active:scale-95">Aceptar</button>
                         </div>
                     </div>
                 </div>
@@ -679,33 +720,33 @@ export default function CrearCapacitacionPage() {
 
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="flex items-center gap-4">
-                    <button type="button" onClick={() => router.back()} className="p-2 hover:bg-gray-200 rounded-full transition"><ArrowLeft className="text-gray-600" /></button>
+                    <button type="button" onClick={() => router.back()} className="p-2 hover:bg-gray-200 dark:hover:bg-slate-800 rounded-full transition"><ArrowLeft className="text-gray-600 dark:text-gray-400" /></button>
                     <div>
-                        <h1 className="text-2xl font-bold text-gray-900">Registrar Capacitación</h1>
+                        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Registrar Capacitación</h1>
                         <div className="flex items-center gap-2 text-sm text-gray-500">
                             <span>{empresaConfig?.codigo_formato}</span><span>•</span><span>RUC: {empresaConfig?.ruc}</span>
                         </div>
                     </div>
                 </div>
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-1 flex items-center gap-2">
-                    <span className="text-xs font-bold text-yellow-700 uppercase">Rev:</span>
-                    <input {...register("revision_usada")} className="w-12 bg-transparent border-b border-yellow-400 text-sm font-bold text-center outline-none" />
+                <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-900/30 rounded-lg px-3 py-1 flex items-center gap-2">
+                    <span className="text-xs font-bold text-yellow-700 dark:text-yellow-500 uppercase">Rev:</span>
+                    <input {...register("revision_usada")} className="w-12 bg-transparent border-b border-yellow-400 dark:border-yellow-600 text-sm font-bold text-center outline-none text-yellow-800 dark:text-yellow-200" />
                 </div>
             </div>
 
             {/* PANEL DE CONTEO EN VIVO (VISUAL) */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-2 animate-in fade-in">
-                <div className="bg-blue-50 border border-blue-200 p-3 rounded-xl flex items-center justify-between shadow-sm">
-                    <div><p className="text-xs font-bold text-blue-500 uppercase">Hombres</p><h3 className="text-2xl font-bold text-blue-700">{watch('total_hombres') || 0}</h3></div>
-                    <div className="bg-blue-100 p-2 rounded-full text-blue-600"><UserCheck size={20} /></div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-2 animate-in fade-in transition-all">
+                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-900/30 p-3 rounded-xl flex items-center justify-between shadow-sm">
+                    <div><p className="text-xs font-bold text-blue-500 dark:text-blue-400 uppercase">Hombres</p><h3 className="text-2xl font-bold text-blue-700 dark:text-blue-300">{watch('total_hombres') || 0}</h3></div>
+                    <div className="bg-blue-100 dark:bg-blue-900/40 p-2 rounded-full text-blue-600 dark:text-blue-400"><UserCheck size={20} /></div>
                 </div>
-                <div className="bg-pink-50 border border-pink-200 p-3 rounded-xl flex items-center justify-between shadow-sm">
-                    <div><p className="text-xs font-bold text-pink-500 uppercase">Mujeres</p><h3 className="text-2xl font-bold text-pink-700">{watch('total_mujeres') || 0}</h3></div>
-                    <div className="bg-pink-100 p-2 rounded-full text-pink-600"><UserCheck size={20} /></div>
+                <div className="bg-pink-50 dark:bg-pink-900/20 border border-pink-200 dark:border-pink-900/30 p-3 rounded-xl flex items-center justify-between shadow-sm">
+                    <div><p className="text-xs font-bold text-pink-500 dark:text-pink-400 uppercase">Mujeres</p><h3 className="text-2xl font-bold text-pink-700 dark:text-pink-300">{watch('total_mujeres') || 0}</h3></div>
+                    <div className="bg-pink-100 dark:bg-pink-900/40 p-2 rounded-full text-pink-600 dark:text-pink-400"><UserCheck size={20} /></div>
                 </div>
-                <div className="bg-gray-50 border border-gray-200 p-3 rounded-xl flex items-center justify-between shadow-sm">
-                    <div><p className="text-xs font-bold text-gray-500 uppercase">Total</p><h3 className="text-2xl font-bold text-gray-700">{watch('total_trabajadores') || 0}</h3></div>
-                    <div className="bg-gray-100 p-2 rounded-full text-gray-600"><Users size={20} /></div>
+                <div className="bg-gray-50 dark:bg-slate-800/50 border border-gray-200 dark:border-slate-700 p-3 rounded-xl flex items-center justify-between shadow-sm">
+                    <div><p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Total</p><h3 className="text-2xl font-bold text-gray-700 dark:text-gray-200">{watch('total_trabajadores') || 0}</h3></div>
+                    <div className="bg-gray-100 dark:bg-slate-700 p-2 rounded-full text-gray-600 dark:text-gray-400"><Users size={20} /></div>
                 </div>
             </div>
 
@@ -713,52 +754,52 @@ export default function CrearCapacitacionPage() {
                 <input type="hidden" {...register("area_objetivo")} />
 
                 {/* 1. SEDE */}
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                    <div className="flex items-center gap-2 mb-4 border-b pb-2 text-blue-700"><Building2 size={20} /> <h3 className="font-bold">Sede</h3></div>
+                <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700">
+                    <div className="flex items-center gap-2 mb-4 border-b border-gray-200 dark:border-slate-700 pb-2 text-blue-700 dark:text-blue-400"><Building2 size={20} /> <h3 className="font-bold">Sede</h3></div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Sede Principal</label>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Sede Principal</label>
                             <div className="flex gap-4">
-                                <label className={`flex items-center gap-2 cursor-pointer border p-3 rounded-lg w-full ${sedeSeleccionada === 'Majes' ? 'bg-blue-50 border-blue-500' : ''}`}>
-                                    <input type="radio" value="Majes" {...register("sede_empresa")} className="accent-blue-600" /> <span className="font-bold text-sm">MAJES</span>
+                                <label className={`flex items-center gap-2 cursor-pointer border p-3 rounded-lg w-full transition-all ${sedeSeleccionada === 'Majes' ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500' : 'border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700/50'}`}>
+                                    <input type="radio" value="Majes" {...register("sede_empresa")} className="accent-blue-600" /> <span className="font-bold text-sm text-gray-700 dark:text-gray-200">MAJES</span>
                                 </label>
-                                <label className={`flex items-center gap-2 cursor-pointer border p-3 rounded-lg w-full ${sedeSeleccionada === 'Olmos' ? 'bg-blue-50 border-blue-500' : ''}`}>
-                                    <input type="radio" value="Olmos" {...register("sede_empresa")} className="accent-blue-600" /> <span className="font-bold text-sm">OLMOS</span>
+                                <label className={`flex items-center gap-2 cursor-pointer border p-3 rounded-lg w-full transition-all ${sedeSeleccionada === 'Olmos' ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500' : 'border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700/50'}`}>
+                                    <input type="radio" value="Olmos" {...register("sede_empresa")} className="accent-blue-600" /> <span className="font-bold text-sm text-gray-700 dark:text-gray-200">OLMOS</span>
                                 </label>
                             </div>
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Código Acta <span className="text-red-500">*</span></label>
-                            <input {...register("codigo_acta", { required: true })} className={`w-full border rounded px-3 py-2 bg-gray-50 font-mono text-blue-900 ${errors.codigo_acta ? 'border-red-500' : ''}`} placeholder="ACT-2025-XXX" />
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Código Acta <span className="text-red-500">*</span></label>
+                            <input {...register("codigo_acta", { required: true })} className={`w-full border rounded px-3 py-2 bg-gray-50 dark:bg-slate-900/50 dark:text-gray-100 font-mono text-blue-900 border-gray-200 dark:border-slate-700 focus:ring-2 focus:ring-blue-500 outline-none transition-all ${errors.codigo_acta ? 'border-red-500' : ''}`} placeholder="ACT-2025-XXX" />
                         </div>
                     </div>
                 </div>
 
                 {/* 2. DETALLES */}
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                    <div className="flex items-center gap-2 mb-4 border-b pb-2 text-blue-700"><Clock size={20} /> <h3 className="font-bold">Detalles</h3></div>
+                <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700">
+                    <div className="flex items-center gap-2 mb-4 border-b border-gray-200 dark:border-slate-700 pb-2 text-blue-700 dark:text-blue-400"><Clock size={20} /> <h3 className="font-bold">Detalles</h3></div>
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
                         <div className="md:col-span-8 relative" ref={autocompleteRef}>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Tema Principal <span className="text-red-500">*</span></label>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tema Principal <span className="text-red-500">*</span></label>
                             <div className="relative">
-                                <input {...temaRegister} onChange={(e) => { temaRegister.onChange(e); handleTemaSearch(e.target.value); }} className="w-full border rounded pl-9 pr-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Buscar tema..." autoComplete="off" />
-                                <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
+                                <input {...temaRegister} onChange={(e) => { temaRegister.onChange(e); handleTemaSearch(e.target.value); }} className="w-full border border-gray-200 dark:border-slate-700 rounded pl-9 pr-3 py-2 bg-white dark:bg-slate-900/50 text-gray-800 dark:text-gray-100 outline-none focus:ring-2 focus:ring-blue-500 transition-all" placeholder="Buscar tema..." autoComplete="off" />
+                                <Search className="absolute left-3 top-2.5 text-gray-400 dark:text-gray-500" size={18} />
                             </div>
                             {mostrarSugerencias && sugerencias.length > 0 && (
-                                <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-60 overflow-y-auto">
+                                <div className="absolute z-50 w-full mt-1 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg shadow-xl max-h-60 overflow-y-auto custom-scrollbar">
                                     <ul>{sugerencias.map((plan, index) => (
                                         <li
                                             key={index}
                                             onClick={() => seleccionarTema(plan)}
-                                            className="px-4 py-3 hover:bg-blue-50 cursor-pointer border-b last:border-none transition-colors group"
+                                            className="px-4 py-3 hover:bg-blue-50 dark:hover:bg-slate-700/50 cursor-pointer border-b border-gray-100 dark:border-slate-700 last:border-none transition-colors group"
                                         >
                                             {/* 1. Título del Tema (Arriba) */}
-                                            <div className="text-sm font-bold text-gray-800 mb-1 group-hover:text-blue-700 transition-colors">
+                                            <div className="text-sm font-bold text-gray-800 dark:text-gray-100 mb-1 group-hover:text-blue-700 dark:group-hover:text-blue-400 transition-colors">
                                                 {plan.tema}
                                             </div>
 
                                             {/* 2. Clasificación (Texto pequeño gris) */}
-                                            <div className="text-xs text-gray-400 mb-2">
+                                            <div className="text-xs text-gray-400 dark:text-gray-500 mb-2">
                                                 {plan.clasificacion}
                                             </div>
 
@@ -768,7 +809,7 @@ export default function CrearCapacitacionPage() {
                                                     {plan.areas_objetivo.split(',').map((area, i) => (
                                                         <span
                                                             key={i}
-                                                            className="text-[10px] uppercase font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded border border-blue-200"
+                                                            className="text-[10px] uppercase font-bold bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 px-2 py-0.5 rounded border border-blue-200 dark:border-blue-900/50"
                                                         >
                                                             {area.trim()}
                                                         </span>
@@ -780,31 +821,31 @@ export default function CrearCapacitacionPage() {
                                 </div>
                             )}
                         </div>
-                        <div className="md:col-span-4"><label className="block text-sm font-medium text-gray-400 mb-1">Actividad Económica</label><div className="w-full border rounded px-3 py-2 bg-gray-100 text-gray-500 text-sm">{empresaConfig?.actividad_economica}</div></div>
-                        <div className="md:col-span-3"><label className="block text-sm font-medium mb-1">Fecha *</label><input type="date" {...register("fecha", { required: true })} className="w-full border rounded px-3 py-2" /></div>
-                        <div className="md:col-span-3"><label className="block text-sm font-medium mb-1">Inicio</label><input type="time" {...register("hora_inicio")} className="w-full border rounded px-3 py-2" /></div>
-                        <div className="md:col-span-3"><label className="block text-sm font-medium mb-1">Término</label><input type="time" {...register("hora_termino")} className="w-full border rounded px-3 py-2" /></div>
-                        <div className="md:col-span-3"><label className="block text-sm font-medium mb-1">Total Horas</label><input {...register("total_horas")} className="w-full border rounded px-3 py-2 bg-gray-50" /></div>
-                        <div className="md:col-span-12"><label className="block text-sm font-medium mb-1">Objetivo</label><textarea {...register("objetivo")} rows={2} className="w-full border rounded px-3 py-2" /></div>
-                        <div className="md:col-span-12"><label className="block text-sm font-medium mb-1">Temario</label><textarea {...register("temario")} rows={3} className="w-full border rounded px-3 py-2" /></div>
+                        <div className="md:col-span-4"><label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">Actividad Económica</label><div className="w-full border border-gray-200 dark:border-slate-700 rounded px-3 py-2 bg-gray-100 dark:bg-slate-900/30 text-gray-500 dark:text-gray-400 text-xs font-medium">{empresaConfig?.actividad_economica}</div></div>
+                        <div className="md:col-span-3"><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Fecha *</label><input type="date" {...register("fecha", { required: true })} className="w-full border border-gray-200 dark:border-slate-700 rounded px-3 py-2 bg-white dark:bg-slate-900/50 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none" /></div>
+                        <div className="md:col-span-3"><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Inicio</label><input type="time" {...register("hora_inicio")} className="w-full border border-gray-200 dark:border-slate-700 rounded px-3 py-2 bg-white dark:bg-slate-900/50 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none" /></div>
+                        <div className="md:col-span-3"><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Término</label><input type="time" {...register("hora_termino")} className="w-full border border-gray-200 dark:border-slate-700 rounded px-3 py-2 bg-white dark:bg-slate-900/50 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none" /></div>
+                        <div className="md:col-span-3"><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Total Horas</label><input {...register("total_horas")} className="w-full border border-gray-200 dark:border-slate-700 rounded px-3 py-2 bg-gray-50 dark:bg-slate-900/30 dark:text-gray-100 outline-none" /></div>
+                        <div className="md:col-span-12"><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Objetivo</label><textarea {...register("objetivo")} rows={2} className="w-full border border-gray-200 dark:border-slate-700 rounded px-3 py-2 bg-white dark:bg-slate-900/50 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none" /></div>
+                        <div className="md:col-span-12"><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Temario</label><textarea {...register("temario")} rows={3} className="w-full border border-gray-200 dark:border-slate-700 rounded px-3 py-2 bg-white dark:bg-slate-900/50 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none" /></div>
                     </div>
                 </div>
 
                 {/* 3. CLASIFICACIÓN */}
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                    <div className="flex items-center gap-2 mb-4 border-b pb-2 text-blue-700"><FileText size={20} /> <h3 className="font-bold">Clasificación</h3></div>
+                <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700">
+                    <div className="flex items-center gap-2 mb-4 border-b border-gray-200 dark:border-slate-700 pb-2 text-blue-700 dark:text-blue-400"><FileText size={20} /> <h3 className="font-bold">Clasificación</h3></div>
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 text-sm">
                         <div>
-                            <label className="block font-bold text-gray-700 mb-2">Actividad *</label>
-                            <div className={`grid grid-cols-2 gap-2 p-2 rounded ${errors.actividad ? 'bg-red-50' : ''}`}>
+                            <label className="block font-bold text-gray-700 dark:text-gray-300 mb-2">Actividad *</label>
+                            <div className={`grid grid-cols-2 gap-2 p-2 rounded transition-colors ${errors.actividad ? 'bg-red-50 dark:bg-red-900/10' : 'bg-gray-50 dark:bg-slate-900/30'}`}>
                                 {['Inducción', 'Capacitación', 'Entrenamiento', 'Taller', 'Charla', 'Simulacro', 'Otros'].map(op => (
-                                    <label key={op} className="flex items-center gap-2 cursor-pointer"><input type="radio" value={op} {...register("actividad", { required: true })} className="accent-blue-600" /> {op}</label>
+                                    <label key={op} className="flex items-center gap-2 cursor-pointer text-gray-600 dark:text-gray-400 hover:text-blue-600 transition-colors"><input type="radio" value={op} {...register("actividad", { required: true })} className="accent-blue-600" /> {op}</label>
                                 ))}
                             </div>
                         </div>
                         <div>
-                            <label className="block font-bold text-gray-700 mb-2">Categoría *</label>
-                            <select {...register("categoria", { required: true })} className={`w-full border rounded px-2 py-1.5 ${errors.categoria ? 'border-red-500' : ''}`}>
+                            <label className="block font-bold text-gray-700 dark:text-gray-300 mb-2">Categoría *</label>
+                            <select {...register("categoria", { required: true })} className={`w-full border rounded px-2 py-1.5 bg-white dark:bg-slate-900/50 dark:text-gray-100 border-gray-200 dark:border-slate-700 focus:ring-2 focus:ring-blue-500 outline-none transition-all ${errors.categoria ? 'border-red-500' : ''}`}>
                                 <option value="">-- Seleccionar --</option>
                                 <option value="Seguridad">Seguridad</option>
                                 <option value="Inocuidad">Inocuidad</option>
@@ -816,49 +857,49 @@ export default function CrearCapacitacionPage() {
                             </select>
                         </div>
                         <div className="flex gap-8">
-                            <div><label className="block font-bold mb-2">Modalidad *</label><div className="flex gap-3"><label><input type="radio" value="Interna" {...register("modalidad", { required: true })} /> Interna</label><label><input type="radio" value="Externa" {...register("modalidad", { required: true })} /> Externa</label></div></div>
-                            <div><label className="block font-bold mb-2">Acción Correctiva *</label><div className="flex gap-3"><label><input type="radio" value="SI" {...register("accion_correctiva", { required: true })} /> SI</label><label><input type="radio" value="NO" {...register("accion_correctiva", { required: true })} /> NO</label></div></div>
+                            <div><label className="block font-bold text-gray-700 dark:text-gray-300 mb-2">Modalidad *</label><div className="flex gap-3 text-gray-600 dark:text-gray-400"><label className="flex items-center gap-1.5 cursor-pointer hover:text-blue-500"><input type="radio" value="Interna" {...register("modalidad", { required: true })} className="accent-blue-600" /> Interna</label><label className="flex items-center gap-1.5 cursor-pointer hover:text-blue-500"><input type="radio" value="Externa" {...register("modalidad", { required: true })} className="accent-blue-600" /> Externa</label></div></div>
+                            <div><label className="block font-bold text-gray-700 dark:text-gray-300 mb-2">Acción Correctiva *</label><div className="flex gap-3 text-gray-600 dark:text-gray-400"><label className="flex items-center gap-1.5 cursor-pointer hover:text-blue-500"><input type="radio" value="SI" {...register("accion_correctiva", { required: true })} className="accent-blue-600" /> SI</label><label className="flex items-center gap-1.5 cursor-pointer hover:text-blue-500"><input type="radio" value="NO" {...register("accion_correctiva", { required: true })} className="accent-blue-600" /> NO</label></div></div>
                         </div>
                         <div>
-                            <label className="block font-bold text-gray-700 mb-2">Centros / Lugar *</label>
-                            <div className={`flex flex-wrap gap-3 p-2 rounded ${errors.centros ? 'bg-red-50' : ''}`}>
-                                {['Planta Packing', 'Fundo', 'Campo', 'Auditorio', 'Otros'].map(c => (<label key={c} className="flex gap-1"><input type="radio" value={c} {...register("centros", { required: true })} /> {c}</label>))}
+                            <label className="block font-bold text-gray-700 dark:text-gray-300 mb-2">Centros / Lugar *</label>
+                            <div className={`flex flex-wrap gap-3 p-2 rounded transition-colors ${errors.centros ? 'bg-red-50 dark:bg-red-900/10' : 'bg-gray-50 dark:bg-slate-900/30'}`}>
+                                {['Planta Packing', 'Fundo', 'Campo', 'Auditorio', 'Otros'].map(c => (<label key={c} className="flex gap-1.5 items-center cursor-pointer text-gray-600 dark:text-gray-400 hover:text-blue-600 transition-colors"><input type="radio" value={c} {...register("centros", { required: true })} className="accent-blue-600" /> {c}</label>))}
                             </div>
                         </div>
                     </div>
                 </div>
 
                 {/* 4. EXPOSITOR */}
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                    <div className="flex items-center gap-2 mb-4 border-b pb-2 text-blue-700"><Briefcase size={20} /> <h3 className="font-bold">Expositor</h3></div>
+                <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700">
+                    <div className="flex items-center gap-2 mb-4 border-b border-gray-200 dark:border-slate-700 pb-2 text-blue-700 dark:text-blue-400"><Briefcase size={20} /> <h3 className="font-bold">Expositor</h3></div>
                     <div className="grid grid-cols-2 gap-4 mb-4">
-                        <input {...register("expositor_nombre")} placeholder="Nombre Completo" className="w-full border rounded px-3 py-2" />
-                        <input {...register("expositor_dni")} placeholder="DNI Expositor" className="w-full border rounded px-3 py-2" />
+                        <input {...register("expositor_nombre")} placeholder="Nombre Completo" className="w-full border border-gray-200 dark:border-slate-700 rounded px-3 py-2 bg-white dark:bg-slate-900/50 dark:text-gray-100 outline-none focus:ring-2 focus:ring-blue-500 transition-all font-medium" />
+                        <input {...register("expositor_dni")} placeholder="DNI Expositor" className="w-full border border-gray-200 dark:border-slate-700 rounded px-3 py-2 bg-white dark:bg-slate-900/50 dark:text-gray-100 outline-none focus:ring-2 focus:ring-blue-500 transition-all font-medium" />
                     </div>
-                    <input {...register("institucion_procedencia")} placeholder="Institución" className="w-full border rounded px-3 py-2 mb-4" />
-                    <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
-                        <label className="block text-sm font-bold text-gray-700 mb-2">Firma del Expositor:</label>
+                    <input {...register("institucion_procedencia")} placeholder="Institución" className="w-full border border-gray-200 dark:border-slate-700 rounded px-3 py-2 bg-gray-50 dark:bg-slate-900/30 dark:text-gray-300 outline-none focus:ring-2 focus:ring-blue-500 transition-all font-medium mb-4" />
+                    <div className="border border-gray-200 dark:border-slate-700 rounded-lg p-3 bg-gray-50 dark:bg-slate-900/30">
+                        <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Firma del Expositor:</label>
                         <div className="flex gap-2 mb-3">
-                            <button type="button" onClick={() => setModoFirma('subir')} className={`text-xs px-3 py-1.5 border rounded flex items-center gap-2 ${modoFirma === 'subir' ? 'bg-blue-600 text-white' : 'bg-white'}`}>
+                            <button type="button" onClick={() => setModoFirma('subir')} className={`text-xs px-3 py-1.5 border rounded flex items-center gap-2 transition-all ${modoFirma === 'subir' ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-500/20' : 'bg-white dark:bg-slate-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-slate-700 hover:bg-gray-50'}`}>
                                 <ImageIcon size={14} /> Subir Imagen
                             </button>
-                            <button type="button" onClick={() => setModoFirma('pantalla')} className={`text-xs px-3 py-1.5 border rounded flex items-center gap-2 ${modoFirma === 'pantalla' ? 'bg-blue-600 text-white' : 'bg-white'}`}>
+                            <button type="button" onClick={() => setModoFirma('pantalla')} className={`text-xs px-3 py-1.5 border rounded flex items-center gap-2 transition-all ${modoFirma === 'pantalla' ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-500/20' : 'bg-white dark:bg-slate-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-slate-700 hover:bg-gray-50'}`}>
                                 <PenTool size={14} /> Firmar Pantalla
                             </button>
                         </div>
                         {watch('expositor_firma') ? (
-                            <div className="flex items-center gap-2 text-green-600 bg-white px-3 py-2 rounded border"><CheckCircle2 size={18} /> Firma Cargada <button type="button" onClick={() => setValue('expositor_firma', '')}><Trash2 size={16} className="text-red-500" /></button></div>
+                            <div className="flex items-center gap-2 text-green-600 dark:text-green-500 bg-white dark:bg-slate-800 px-3 py-2 rounded border border-green-200 dark:border-green-900/30 animate-in zoom-in"><CheckCircle2 size={18} /> Firma Cargada <button type="button" onClick={() => setValue('expositor_firma', '')} className="p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"><Trash2 size={16} className="text-red-500" /></button></div>
                         ) : (
                             modoFirma === 'subir' ?
-                                <label className="cursor-pointer flex items-center gap-2 bg-white p-2 border border-dashed rounded justify-center">
-                                    {uploadingExpositor ? <Loader2 className="animate-spin" size={20} /> : <UploadCloud size={20} />} <span className="text-sm">Subir firma</span> <input type="file" className="hidden" onChange={handleUploadFirmaExpositor} />
-                                </label> : <SignaturePad ref={signaturePadRef} />
+                                <label className="cursor-pointer flex items-center gap-2 bg-white dark:bg-slate-800 p-2 border border-dashed border-gray-300 dark:border-slate-600 rounded justify-center hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors group">
+                                    {uploadingExpositor ? <Loader2 className="animate-spin text-blue-500" size={20} /> : <UploadCloud size={20} className="text-gray-400 group-hover:text-blue-500 transition-colors" />} <span className="text-sm text-gray-500 dark:text-gray-400 group-hover:text-blue-600">Subir firma</span> <input type="file" className="hidden" onChange={handleUploadFirmaExpositor} />
+                                </label> : <div className="bg-white dark:bg-slate-100 rounded-lg p-1"><SignaturePad ref={signaturePadRef} /></div>
                         )}
                     </div>
                 </div>
 
                 {/* 5. TABLA INTELIGENTE (PARTICIPANTES) */}
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700 overflow-x-auto">
                     <div className="flex gap-2 mb-6">
                         {/* 🟢 BOTÓN AUTOCOMPLETAR */}
                         {watch('area_objetivo') && (
@@ -890,7 +931,7 @@ export default function CrearCapacitacionPage() {
                             </button>
                         )}
                     </div>
-                    <div className="hidden md:grid grid-cols-12 gap-2 text-xs font-bold text-gray-500 mb-2 uppercase px-2">
+                    <div className="hidden md:grid grid-cols-12 gap-2 text-xs font-bold text-gray-400 dark:text-gray-500 mb-2 uppercase px-2">
                         <div className="col-span-1 text-center">#</div>
                         <div className="col-span-2">DNI</div>
                         <div className="col-span-4">Nombres</div>
@@ -901,8 +942,8 @@ export default function CrearCapacitacionPage() {
                     {fields.map((item, index) => {
                         const { opcionesNombres, opcionesDNI, cargosDisponibles, areasDisponibles } = getOpcionesFila(index);
                         return (
-                            <div key={item.id} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center bg-gray-50 p-2 rounded border text-sm mb-2">
-                                <div className="col-span-1 font-bold text-center">{index + 1}</div>
+                            <div key={item.id} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center bg-gray-50 dark:bg-slate-900/30 p-2 rounded border border-gray-100 dark:border-slate-800 text-sm mb-2 hover:bg-white dark:hover:bg-slate-900/50 transition-all">
+                                <div className="col-span-1 font-bold text-center text-gray-400 dark:text-gray-600">{index + 1}</div>
                                 <div className="col-span-2">
                                     <Controller name={`participantes.${index}.dni`} control={control} render={({ field }) => (
                                         <Select
@@ -962,42 +1003,42 @@ export default function CrearCapacitacionPage() {
                                         />
                                     )} />
                                 </div>
-                                <div className="col-span-1 flex justify-center gap-1">
-                                    {watch(`participantes.${index}.firma_url`) ? <CheckCircle2 className="text-green-600" size={18} /> : (
+                                <div className="col-span-1 flex justify-center gap-2">
+                                    {watch(`participantes.${index}.firma_url`) ? <CheckCircle2 className="text-green-600 dark:text-green-500 animate-in zoom-in" size={20} /> : (
                                         <>
-                                            <label className={`cursor-pointer ${uploadingRow === index ? 'animate-spin' : ''}`}><input type="file" className="hidden" onChange={(e) => handleUploadFirma(index, e)} /><UploadCloud size={16} className="text-blue-500" /></label>
-                                            <button type="button" onClick={() => abrirModalFirma(index)}><PenTool size={16} className="text-purple-500" /></button>
+                                            <label className={`cursor-pointer p-1.5 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors ${uploadingRow === index ? 'animate-spin' : ''}`} title="Subir foto de firma"><input type="file" className="hidden" onChange={(e) => handleUploadFirma(index, e)} /><UploadCloud size={18} className="text-blue-500" /></label>
+                                            <button type="button" className="p-1.5 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-lg transition-colors" title="Firmar en pantalla" onClick={() => abrirModalFirma(index)}><PenTool size={18} className="text-purple-500" /></button>
                                         </>
                                     )}
-                                    <button type="button" onClick={() => remove(index)}><Trash2 size={16} className="text-red-500" /></button>
+                                    <button type="button" className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors" title="Eliminar fila" onClick={() => remove(index)}><Trash2 size={18} className="text-red-500" /></button>
                                 </div>
                             </div>
                         );
                     })}
-                    <div className="mt-4 flex justify-center"><button type="button" onClick={() => append({ numero: 0, dni: '', apellidos_nombres: '', area: '', cargo: '', genero: 'M', condicion: '' })} className="flex items-center gap-2 px-4 py-2 border-2 border-dashed text-blue-600 rounded-lg hover:bg-blue-50"><UserPlus size={18} /> Agregar Fila</button></div>
+                    <div className="mt-4 flex justify-center"><button type="button" onClick={() => append({ numero: 0, dni: '', apellidos_nombres: '', area: '', cargo: '', genero: 'M', condicion: '' })} className="flex items-center gap-2 px-4 py-2 border-2 border-dashed border-gray-300 dark:border-slate-700 text-blue-600 dark:text-blue-400 rounded-xl hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:border-blue-500 dark:hover:border-blue-400 transition-all font-bold"><UserPlus size={18} /> Agregar Fila</button></div>
                 </div>
 
                 {/* 6. FOTOS */}
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                    <div className="flex items-center gap-2 mb-4 border-b pb-2 text-blue-700"><Camera size={20} /><h3 className="font-bold">Evidencias</h3></div>
+                <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700">
+                    <div className="flex items-center gap-2 mb-4 border-b border-gray-200 dark:border-slate-700 pb-2 text-blue-700 dark:text-blue-400"><Camera size={20} /><h3 className="font-bold">Evidencias</h3></div>
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                        <div className="relative border-2 border-dashed rounded-lg p-6 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 h-40">
+                        <div className="relative border-2 border-dashed border-gray-300 dark:border-slate-700 rounded-xl p-6 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 hover:border-blue-400 transition-all h-40 group">
                             <input type="file" multiple accept="image/*" onChange={handleFileChange} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-                            <Camera className="text-blue-500 mb-2" size={24} /> <span className="text-sm">Agregar Fotos</span>
+                            <Camera className="text-gray-400 dark:text-gray-500 group-hover:text-blue-500 transition-colors mb-2" size={32} /> <span className="text-sm font-bold text-gray-500 dark:text-gray-400 group-hover:text-blue-600">Agregar Fotos</span>
                         </div>
                         {evidencias.map((f, i) => (
-                            <div key={i} className="relative h-40 border rounded-lg overflow-hidden"><Image src={URL.createObjectURL(f)} alt="Preview" fill className="object-cover" unoptimized /> <button type="button" onClick={() => removeEvidencia(i)} className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full"><X size={14} /></button></div>
+                            <div key={i} className="relative h-40 border border-gray-200 dark:border-slate-700 rounded-xl overflow-hidden shadow-sm group animate-in zoom-in"><Image src={URL.createObjectURL(f)} alt="Preview" fill className="object-cover" unoptimized /> <button type="button" onClick={() => removeEvidencia(i)} className="absolute top-2 right-2 bg-red-500 text-white p-1.5 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"><X size={14} /></button></div>
                         ))}
                     </div>
                 </div>
 
-                <div className="flex justify-end gap-4 pt-4 border-t">
-                    <button type="button" onClick={() => router.back()} className="px-6 py-2 border rounded-lg text-gray-600">Cancelar</button>
-                    <button type="submit" disabled={loading} className="flex items-center gap-2 px-8 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold shadow">
-                        <Save size={20} /> {loading ? 'Guardando...' : 'Guardar Acta'}
+                <div className="flex justify-end gap-4 pt-6 border-t border-gray-200 dark:border-slate-700">
+                    <button type="button" onClick={() => router.back()} className="px-6 py-2.5 border border-gray-200 dark:border-slate-700 rounded-xl text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-800 transition-all font-bold">Cancelar</button>
+                    <button type="submit" disabled={loading} className="flex items-center gap-2 px-10 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-xl shadow-blue-500/20 transition-all active:scale-95 disabled:opacity-50 disabled:scale-100">
+                        {loading ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />} {loading ? 'Guardando...' : 'Guardar Acta'}
                     </button>
                 </div>
-            </form>
-        </div>
+            </form >
+        </div >
     );
 }
