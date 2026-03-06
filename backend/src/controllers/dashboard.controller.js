@@ -5,15 +5,16 @@ const prisma = require("../utils/db");
 const normalizar = (texto) => {
   return texto
     ? texto
-        .toLowerCase()
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .trim()
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim()
     : "";
 };
 
 // --- 1. TARJETAS DE ESTADÍSTICAS (KPIs - Lógica ANUAL) ---
 const getStats = async (req, res) => {
+  console.log("📊 Dashboard: getStats solicitado por", req.user);
   try {
     const { id, rol } = req.user;
     const filtro =
@@ -77,6 +78,7 @@ const getStats = async (req, res) => {
 
 // --- 2. LISTA DE RECIENTES ---
 const getRecent = async (req, res) => {
+  console.log("🕒 Dashboard: getRecent solicitado por", req.user);
   try {
     const { id, rol } = req.user;
     const filtro =
@@ -111,53 +113,53 @@ const getRecent = async (req, res) => {
   }
 };
 
-// --- 3. DISTRIBUCIÓN (LÓGICA CORREGIDA: AGRUPACIÓN POR TEMAS ÚNICOS) ---
+// --- 3. DISTRIBUCIÓN (LÓGICA OPTIMIZADA) ---
 const getDistribution = async (req, res) => {
+  console.log("Dashboard: Calculando distribución por áreas");
   try {
     const [planes, trabajadores, capacitaciones] = await Promise.all([
-      prisma.planAnual.findMany(),
-      prisma.trabajadores.findMany({ where: { estado: true } }),
+      prisma.planAnual.findMany({
+        select: { tema: true, areas_objetivo: true }
+      }),
+      prisma.trabajadores.findMany({
+        where: { estado: true },
+        select: { dni: true, area: true }
+      }),
       prisma.capacitaciones.findMany({
-        include: { participantes: { select: { dni: true } } },
+        select: {
+          tema_principal: true,
+          participantes: { select: { dni: true } }
+        },
       }),
     ]);
 
-    // --- PASO 1: AGRUPAR EL PLAN ANUAL POR TEMA ÚNICO ---
-    // Esto evita que si un tema aparece 3 veces en el plan, se cuente 3 veces.
-    // Estructura: { "tema_normalizado": { nombre: "Tema Original", areas: Set("AGRICOLA", "RIEGO") } }
+    // ... (rest of the logic remains similar but now with less memory consumption)
     const temasUnicosMap = {};
 
     planes.forEach((plan) => {
       if (!plan.areas_objetivo) return;
-
       const temaNorm = normalizar(plan.tema);
       const areasRow = plan.areas_objetivo.split(",").map((a) => a.trim());
 
       if (!temasUnicosMap[temaNorm]) {
         temasUnicosMap[temaNorm] = {
-          nombreOriginal: plan.tema, // Guardamos uno para referencia
-          areasSet: new Set(), // Usamos Set para que las áreas no se repitan por tema
+          nombreOriginal: plan.tema,
+          areasSet: new Set(),
         };
       }
-
-      // Agregamos las áreas de esta fila al Set del tema
       areasRow.forEach((area) => {
         if (area) temasUnicosMap[temaNorm].areasSet.add(area);
       });
     });
 
-    // Mapa acumulador final: { "AGRICOLA": { meta: 0, real: 0 } }
     const areaStats = {};
 
-    // --- PASO 2: ITERAR POR CADA TEMA ÚNICO ---
     for (const [temaNorm, datosTema] of Object.entries(temasUnicosMap)) {
-      // A. Buscamos todas las capacitaciones de este tema (Match flexible)
       const capsDelTema = capacitaciones.filter((c) => {
         const temaCapNorm = normalizar(c.tema_principal);
         return temaCapNorm.includes(temaNorm) || temaNorm.includes(temaCapNorm);
       });
 
-      // B. Obtenemos DNIs únicos que cumplieron ESTE tema
       const dnisCumplieronTema = new Set();
       capsDelTema.forEach((cap) => {
         cap.participantes.forEach((p) => {
@@ -165,17 +167,9 @@ const getDistribution = async (req, res) => {
         });
       });
 
-      // C. Iteramos las áreas objetivo DE ESTE TEMA
       datosTema.areasSet.forEach((areaNombreOriginal) => {
-        // 1. Normalizamos la llave para agrupar en el gráfico
         let llave = areaNombreOriginal.trim().toUpperCase();
-
-        // 🟢 EL PUENTE: Si el plan dice Mantenimiento o Mecanización, unificamos a Taller
-        if (
-          llave.includes("MANTENIMIENTO") ||
-          llave.includes("MECANIZACION") ||
-          llave.includes("TALLER")
-        ) {
+        if (llave.includes("MANTENIMIENTO") || llave.includes("MECANIZACION") || llave.includes("TALLER")) {
           llave = "TALLER - MECANIZACIÓN";
         }
 
@@ -183,47 +177,27 @@ const getDistribution = async (req, res) => {
           areaStats[llave] = { nombre: llave, meta: 0, real: 0 };
         }
 
-        // 2. Definimos qué buscar en la tabla de trabajadores
-        // Si la llave es Taller, buscamos trabajadores que sean Taller o Mantenimiento
         const esTallerUbicado = llave === "TALLER - MECANIZACIÓN";
-
         const trabajadoresDelArea = trabajadores.filter((t) => {
           const areaT = normalizar(t.area);
           if (esTallerUbicado) {
-            return (
-              areaT.includes("taller") ||
-              areaT.includes("mantenimiento") ||
-              areaT.includes("mecanizacion")
-            );
+            return areaT.includes("taller") || areaT.includes("mantenimiento") || areaT.includes("mecanizacion");
           }
           return areaT.includes(normalizar(areaNombreOriginal));
         });
 
-        const cantidadTrabajadores = trabajadoresDelArea.length;
-
-        // 3. Sumamos a la estadística
-        areaStats[llave].meta += cantidadTrabajadores;
-        areaStats[llave].real += trabajadoresDelArea.filter((t) =>
-          dnisCumplieronTema.has(t.dni),
-        ).length;
+        areaStats[llave].meta += trabajadoresDelArea.length;
+        areaStats[llave].real += trabajadoresDelArea.filter((t) => dnisCumplieronTema.has(t.dni)).length;
       });
     }
 
-    // --- PASO 3: FORMATEAR ---
     const reporte = Object.keys(areaStats).map((llave) => {
       const data = areaStats[llave];
       const esExterno = data.meta === 0;
-
-      let porcentaje = 0;
-      if (!esExterno) {
-        porcentaje =
-          data.meta > 0 ? ((data.real / data.meta) * 100).toFixed(1) : 0;
-      } else {
-        porcentaje = data.real > 0 ? 100 : 0;
-      }
+      let porcentaje = esExterno ? (data.real > 0 ? 100 : 0) : (data.meta > 0 ? ((data.real / data.meta) * 100).toFixed(1) : 0);
 
       return {
-        area: data.nombre, // 🟢 Usamos el nombre estético unificado
+        area: data.nombre,
         total: data.meta,
         capacitados: data.real,
         avance: Number(porcentaje),
@@ -231,7 +205,6 @@ const getDistribution = async (req, res) => {
       };
     });
 
-    // Ordenar
     reporte.sort((a, b) => {
       if (a.tipo !== b.tipo) return a.tipo === "INTERNO" ? -1 : 1;
       return b.avance - a.avance;
@@ -239,9 +212,10 @@ const getDistribution = async (req, res) => {
 
     res.json(reporte);
   } catch (error) {
-    console.error("Error en getDistribution:", error);
+    console.error(`Error en getDistribution: ${error.message}`);
     res.status(500).json({ error: "Error al obtener distribución" });
   }
 };
+
 
 module.exports = { getStats, getRecent, getDistribution };

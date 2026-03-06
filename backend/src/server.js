@@ -17,20 +17,32 @@ const gestionRoutes = require("./routes/gestion.routes");
 const usuarioRoutes = require("./routes/usuario.routes");
 const evaluacionRoutes = require("./routes/evaluacion.routes");
 
+const cookieParser = require("cookie-parser");
+const logger = require("./utils/logger");
+
 const app = express();
 
 // 1. CONFIGURACIÓN DE CORS
-// En server.js
 app.use(
   cors({
-    origin: "*", // Permite conexiones desde cualquier lugar (Vercel, Localhost, etc.)
+    origin: true,
+    credentials: true, // Permitir envío de cookies
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   }),
 );
+
 // 2. MIDDLEWARES
+app.use(cookieParser());
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+
+// Middleware de logging para todas las peticiones
+app.use((req, res, next) => {
+  logger.http(`${req.method} ${req.url}`);
+  next();
+});
+
 
 // 3. ARCHIVOS ESTÁTICOS
 // Esto permite que cuando el PDF pida "localhost:4000/uploads/foto.jpg", la imagen se vea.

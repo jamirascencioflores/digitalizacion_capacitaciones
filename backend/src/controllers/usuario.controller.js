@@ -3,32 +3,22 @@ const prisma = require("../utils/db");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
+const logger = require("../utils/logger");
+
 // --- 1. LOGIN (Necesario para entrar) ---
 const login = async (req, res) => {
+  const { usuario, contrasena } = req.body;
+  logger.info(`Intento de login para usuario: ${usuario}`);
+
   try {
-    const { usuario, contrasena } = req.body;
-
-    if (!usuario || !contrasena) {
-      return res.status(400).json({ error: "Ingrese usuario y contraseña" });
-    }
-
     // Buscar usuario
     const userEncontrado = await prisma.usuarios.findUnique({
       where: { usuario: usuario },
     });
 
-    if (!userEncontrado) {
-      return res.status(400).json({ error: "Credenciales inválidas" });
-    }
-
-    // Verificar contraseña
-    const passValido = await bcrypt.compare(
-      contrasena,
-      userEncontrado.contrasena,
-    );
-
-    if (!passValido) {
-      return res.status(400).json({ error: "Credenciales inválidas" });
+    if (!userEncontrado || !(await bcrypt.compare(contrasena, userEncontrado.contrasena))) {
+      logger.warn(`Credenciales inválidas para: ${usuario}`);
+      return res.status(401).json({ error: "Credenciales inválidas" });
     }
 
     // Generar Token JWT
@@ -41,19 +31,33 @@ const login = async (req, res) => {
       { expiresIn: "8h" },
     );
 
+    // Configuración de la cookie: HttpOnly y Secure
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'Lax', // O 'None' si hay dominios distintos
+      maxAge: 8 * 60 * 60 * 1000, // 8 horas
+    });
+
     // Quitamos la contraseña de la respuesta
     const { contrasena: _, ...datosUsuario } = userEncontrado;
 
+    logger.info(`Login exitoso: ${usuario} (${userEncontrado.rol})`);
+
     res.json({
       mensaje: "Bienvenido al Sistema 👋",
-      token: token,
-      usuario: datosUsuario,
+      token: token, // Enviamos el token igual para retrocompatibilidad por ahora
+      usuario: {
+        ...datosUsuario,
+        solicita_reset: userEncontrado.solicita_reset
+      },
     });
   } catch (error) {
-    console.error(error);
+    logger.error(`Error en login para ${usuario}: ${error.message}`);
     res.status(500).json({ error: "Error al iniciar sesión" });
   }
 };
+
 
 // --- 2. OBTENER USUARIOS (Nuevo: Para el Panel Admin) ---
 const obtenerUsuarios = async (req, res) => {
@@ -63,6 +67,7 @@ const obtenerUsuarios = async (req, res) => {
         id_usuario: true,
         nombre: true, // O 'nombre_completo' según tu schema.prisma
         usuario: true,
+        email: true,
         rol: true,
         estado: true,
       },
@@ -83,52 +88,69 @@ const obtenerUsuarios = async (req, res) => {
 };
 
 // --- 3. REGISTRAR/CREAR USUARIO (Unificado) ---
+const { sendEmailManual } = require("../utils/mailer");
+const crypto = require("crypto");
+
 const registrarUsuario = async (req, res) => {
   try {
-    // El frontend envía: nombre_completo, usuario, password, rol
-    // Tu BD espera: nombre, usuario, contrasena, rol
-    const { nombre_completo, nombre, usuario, password, contrasena, rol } =
+    const { nombre_completo, nombre, usuario, password, contrasena, rol, email } =
       req.body;
 
-    // Normalizamos los nombres de variables
     const nombreFinal = nombre_completo || nombre;
-    const passFinal = password || contrasena;
+    let passOriginal = password || contrasena;
 
-    // Validar
-    if (!nombreFinal || !usuario || !passFinal || !rol) {
-      return res.status(400).json({ error: "Faltan campos obligatorios" });
+    // Si no mandan contraseña, generamos una temporal
+    const esTemporal = !passOriginal;
+    if (esTemporal) {
+      passOriginal = crypto.randomBytes(4).toString("hex"); // 8 caracteres aleatorios
     }
 
-    // Verificar duplicados
-    const existe = await prisma.usuarios.findUnique({
-      where: { usuario: usuario },
-    });
+    if (!nombreFinal || !usuario || !rol || !email) {
+      return res.status(400).json({ error: "Faltan campos obligatorios (nombre, usuario, rol, email)" });
+    }
 
+    const existe = await prisma.usuarios.findUnique({ where: { usuario } });
     if (existe) {
-      return res
-        .status(400)
-        .json({ error: "El nombre de usuario ya está en uso" });
+      return res.status(400).json({ error: "El nombre de usuario ya está en uso" });
     }
 
-    // Encriptar
-    const salt = await bcrypt.genSalt(10);
-    const hashContrasena = await bcrypt.hash(passFinal, salt);
+    const existeEmail = await prisma.usuarios.findFirst({ where: { email } });
+    if (existeEmail) {
+      return res.status(400).json({ error: "El correo ya está registrado" });
+    }
 
-    // Guardar
+    const salt = await bcrypt.genSalt(10);
+    const hashContrasena = await bcrypt.hash(passOriginal, salt);
+
     const nuevoUsuario = await prisma.usuarios.create({
       data: {
-        nombre: nombreFinal, // Asegúrate que en tu schema.prisma se llame 'nombre' o cámbialo aquí
+        nombre: nombreFinal,
         usuario,
+        email,
         contrasena: hashContrasena,
         rol,
         estado: true,
+        solicita_reset: true, // Forzamos cambio de clave al entrar
       },
     });
+
+    // Enviar correo de bienvenida
+    const loginUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/login`;
+    const html = `
+      <h1>Bienvenido a FormApp, ${nombreFinal}</h1>
+      <p>Se ha creado una cuenta para ti en el sistema de capacitaciones.</p>
+      <p><strong>Usuario:</strong> ${usuario}</p>
+      <p><strong>Contraseña Temporal:</strong> ${passOriginal}</p>
+      <p>Por seguridad, se te pedirá cambiar tu contraseña al iniciar sesión por primera vez.</p>
+      <a href="${loginUrl}" style="background-color: #16a34a; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Iniciar Sesión</a>
+    `;
+
+    await sendEmailManual(email, "Bienvenido a FormApp - Tus credenciales", html);
 
     const { contrasena: _, ...usuarioSinPass } = nuevoUsuario;
 
     res.status(201).json({
-      mensaje: "Usuario creado con éxito 🎉",
+      mensaje: "Usuario creado con éxito y correo enviado 📧",
       usuario: usuarioSinPass,
     });
   } catch (error) {
@@ -149,6 +171,7 @@ const actualizarUsuario = async (req, res) => {
       contrasena,
       rol,
       estado,
+      email,
     } = req.body;
 
     // Normalizamos variables
@@ -180,6 +203,7 @@ const actualizarUsuario = async (req, res) => {
     const datosActualizar = {
       nombre: nombreFinal, // O 'nombre_completo' según tu schema
       usuario,
+      email,
       rol,
       estado,
     };
@@ -253,6 +277,7 @@ const obtenerSolicitudesReset = async (req, res) => {
     });
     res.json(usuarios);
   } catch (error) {
+    console.error("❌ Error en obtenerSolicitudesReset:", error);
     res.status(500).json({ error: "Error al cargar alertas" });
   }
 };
