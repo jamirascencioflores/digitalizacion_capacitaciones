@@ -1,7 +1,6 @@
 // backend/src/controllers/gestion.controller.js
-const { PrismaClient } = require("@prisma/client");
-const prisma = new PrismaClient();
-const ExcelJS = require("exceljs");
+const prisma = require("../utils/db");
+let ExcelJS = null; // Carga diferida
 const fs = require("fs");
 
 const MONTH_MAP = {
@@ -27,10 +26,10 @@ const MONTH_MAP = {
 const normalizar = (texto) => {
   return texto
     ? texto
-        .toLowerCase()
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .trim()
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim()
     : "";
 };
 
@@ -41,6 +40,7 @@ const subirPlanAnual = async (req, res) => {
       return res.status(400).json({ error: "No se subió ningún archivo" });
 
     console.log(`📂 Procesando archivo: ${req.file.originalname}`);
+    if (!ExcelJS) ExcelJS = require("exceljs");
     const workbook = new ExcelJS.Workbook();
 
     // 🟢 CORRECCIÓN 1: Usamos .load(buffer) en lugar de .readFile(path)
@@ -249,6 +249,15 @@ const obtenerAvance = async (req, res) => {
       }),
     ]);
 
+    // 🟢 OPTIMIZACIÓN 1: Pre-normalizar trabajadores una sola vez
+    const trabajadoresNorm = trabajadores.map(t => ({
+      ...t,
+      areaN: normalizar(t.area),
+      catN: normalizar(t.categoria),
+      cargoN: normalizar(t.cargo),
+      palabrasOperaciones: ["operaciones", "planta", "packing"].some(op => normalizar(t.area).includes(op))
+    }));
+
     const temasUnificados = {};
     planes.forEach((plan) => {
       const temaNorm = normalizar(plan.tema);
@@ -259,204 +268,116 @@ const obtenerAvance = async (req, res) => {
           mesesSet: new Set(),
           objetivosSet: new Set(),
           areasSet: new Set(),
+          areasNorm: [] // Para evitar normalizar en el loop de trabajadores
         };
       }
       const entry = temasUnificados[temaNorm];
       if (plan.mes_programado) entry.mesesSet.add(plan.mes_programado);
 
-      const objLimpio = plan.objetivo
-        ? plan.objetivo.replace("Original: ", "")
-        : "";
+      const objLimpio = plan.objetivo ? plan.objetivo.replace("Original: ", "") : "";
       if (objLimpio) entry.objetivosSet.add(objLimpio);
 
-      if (plan.areas_objetivo)
+      if (plan.areas_objetivo) {
         plan.areas_objetivo.split(",").forEach((a) => {
-          if (a.trim()) entry.areasSet.add(a.trim());
+          const areaTrim = a.trim();
+          if (areaTrim) {
+            entry.areasSet.add(areaTrim);
+          }
         });
+      }
+    });
+
+    // 🟢 OPTIMIZACIÓN 2: Pre-normalizar áreas de temas
+    Object.values(temasUnificados).forEach(entry => {
+      entry.areasNorm = Array.from(entry.areasSet).map(a => normalizar(a));
     });
 
     const reporte = Object.values(temasUnificados).map((datosTema) => {
       const temaNorm = normalizar(datosTema.tema);
 
-      const capsDelTema = capacitaciones.filter((c) => {
-        const temaCap = normalizar(c.tema_principal);
-        return temaCap.includes(temaNorm) || temaNorm.includes(temaCap);
+      const dnisAsistentes = new Set();
+      // Filtrar capacitaciones relevantes una vez
+      capacitaciones.forEach((cap) => {
+        const temaCap = normalizar(cap.tema_principal);
+        if (temaCap.includes(temaNorm) || temaNorm.includes(temaCap)) {
+          cap.participantes.forEach((p) => {
+            if (p.dni) dnisAsistentes.add(p.dni);
+          });
+        }
       });
 
-      const dnisAsistentes = new Set();
-      capsDelTema.forEach((cap) =>
-        cap.participantes.forEach((p) => {
-          if (p.dni) dnisAsistentes.add(p.dni);
-        }),
-      );
+      const areasListaNorm = datosTema.areasNorm;
+      const palabrasOperaciones = ["operaciones", "planta", "packing"];
 
-      const areasLista = Array.from(datosTema.areasSet);
+      // 🟢 OPTIMIZACIÓN 3: Usar trabajadores pre-normalizados
+      const trabajadoresObjetivo = trabajadoresNorm.filter((t) => {
+        const esDeOperaciones = t.palabrasOperaciones;
 
-      const trabajadoresObjetivo = trabajadores.filter((t) => {
-        const areaT = normalizar(t.area || "");
-        const catT = normalizar(t.categoria || "");
-        const cargoT = normalizar(t.cargo || "");
-
-        // 1. IDENTIFICACIÓN DE OPERACIONES
-        const palabrasOperaciones = ["operaciones", "planta", "packing"];
-        const esDeOperaciones = palabrasOperaciones.some((op) =>
-          areaT.includes(op),
-        );
-
-        return areasLista.some((areaPlanRaw) => {
-          const areaPlan = normalizar(areaPlanRaw);
-
-          // 🔴 2. FILTROS NEGATIVOS (Anti-Colados y Cuarentenas)
-
+        return areasListaNorm.some((areaPlan) => {
           // Regla: CUARENTENA OPERACIONES
           if (esDeOperaciones) {
-            const planPideOperaciones = palabrasOperaciones.some((op) =>
-              areaPlan.includes(op),
-            );
+            const planPideOperaciones = palabrasOperaciones.some((op) => areaPlan.includes(op));
             if (!planPideOperaciones) return false;
           }
 
           // Regla: AGRICOLA (Excluye Riego, Taller, RRHH)
           if (areaPlan.includes("agricola")) {
-            const prohibidos = [
-              "riego",
-              "taller",
-              "mecanico",
-              "mecanizacion",
-              "mantenimiento",
-              "rrhh",
-              "recursos humanos",
-              "operaciones",
-            ];
-            if (prohibidos.some((p) => areaT.includes(p))) return false;
+            const prohibidos = ["riego", "taller", "mecanico", "mecanizacion", "mantenimiento", "rrhh", "recursos humanos", "operaciones"];
+            if (prohibidos.some((p) => t.areaN.includes(p))) return false;
           }
 
           // Regla: RIEGO (Excluye Agricola general, Taller, Operaciones)
           if (areaPlan.includes("riego")) {
             const prohibidos = ["operaciones", "agricola", "campo", "taller"];
-            if (prohibidos.some((p) => areaT.includes(p))) return false;
+            if (prohibidos.some((p) => t.areaN.includes(p))) return false;
           }
 
-          // 🔵 3. DICCIONARIO PODEROSO (Igual al Frontend)
+          // Diccionario
           const diccionario = {
-            // Administrativos / Gestión
-            rrhh: [
-              "recursos humanos",
-              "personal",
-              "rrhh",
-              "bienestar",
-              "social",
-            ],
+            rrhh: ["recursos humanos", "personal", "rrhh", "bienestar", "social"],
             sig: ["sig", "sistema de gestion", "integrado", "calidad", "sso"],
-            logistica: [
-              "logistica",
-              "almacen",
-              "compras",
-              "adquisiciones",
-              "suministros",
-            ],
-            planificacion: [
-              "planificacion",
-              "planeamiento",
-              "control",
-              "proyectos",
-            ],
-            cifhs: [
-              "cifhs",
-              "hostigamiento",
-              "comite de intervencion",
-              "genero",
-              "violencia",
-            ],
+            logistica: ["logistica", "almacen", "compras", "adquisiciones", "suministros"],
+            planificacion: ["planificacion", "planeamiento", "control", "proyectos"],
+            cifhs: ["cifhs", "hostigamiento", "comite de intervencion", "genero", "violencia"],
             eds: ["eds", "desempeño social", "equipo de desempeño"],
             scsst: ["scsst", "comite de seguridad", "csst"],
-
-            // Operativos / Campo
-            agricola: [
-              "agricola",
-              "campo",
-              "cosecha",
-              "cultivo",
-              "fitosanidad",
-            ],
+            agricola: ["agricola", "campo", "cosecha", "cultivo", "fitosanidad"],
             sanidad: ["sanidad", "evaluadores", "plagas"],
             riego: ["riego"],
             operaciones: ["operaciones", "planta", "packing"],
-
-            // 🟢 AQUÍ ESTÁ EL ARREGLO PARA MANTENIMIENTO:
-            mantenimiento: [
-              "mantenimiento",
-              "taller",
-              "mecanizacion",
-              "maquinaria",
-              "mecanico",
-            ],
-            mecanizacion: [
-              "mecanizacion",
-              "taller",
-              "mantenimiento",
-              "maquinaria",
-            ],
+            mantenimiento: ["mantenimiento", "taller", "mecanizacion", "maquinaria", "mecanico"],
+            mecanizacion: ["mecanizacion", "taller", "mantenimiento", "maquinaria"],
           };
 
-          // A. Por Diccionario
           if (diccionario[areaPlan]) {
-            const foundInDict = diccionario[areaPlan].some(
-              (sinonimo) =>
-                areaT.includes(sinonimo) ||
-                catT.includes(sinonimo) ||
-                cargoT.includes(sinonimo),
+            return diccionario[areaPlan].some(
+              (sinonimo) => t.areaN.includes(sinonimo) || t.catN.includes(sinonimo) || t.cargoN.includes(sinonimo)
             );
-            if (foundInDict) return true;
           }
 
-          // B. Por Coincidencia Directa (Respaldo)
           if (areaPlan.length > 3) {
-            const prohibidasGen = [
-              "area",
-              "areas",
-              "departamento",
-              "gerencia",
-              "jefatura",
-              "procesos",
-              "tema",
-            ];
+            const prohibidasGen = ["area", "areas", "departamento", "gerencia", "jefatura", "procesos", "tema"];
             if (prohibidasGen.includes(areaPlan)) return false;
-
-            return (
-              areaT.includes(areaPlan) ||
-              catT.includes(areaPlan) ||
-              cargoT.includes(areaPlan)
-            );
+            return t.areaN.includes(areaPlan) || t.catN.includes(areaPlan) || t.cargoN.includes(areaPlan);
           }
           return false;
         });
       });
 
       const metaTotal = trabajadoresObjetivo.length;
-      const asistentesValidos = trabajadoresObjetivo.filter((t) =>
-        dnisAsistentes.has(t.dni),
-      );
-      const faltantes = trabajadoresObjetivo.filter(
-        (t) => !dnisAsistentes.has(t.dni),
-      );
+      const asistentesValidos = trabajadoresObjetivo.filter((t) => dnisAsistentes.has(t.dni));
+      const faltantes = trabajadoresObjetivo.filter((t) => !dnisAsistentes.has(t.dni));
 
       let avanceReal = asistentesValidos.length;
-      if (metaTotal === 0 && dnisAsistentes.size > 0)
-        avanceReal = dnisAsistentes.size;
+      if (metaTotal === 0 && dnisAsistentes.size > 0) avanceReal = dnisAsistentes.size;
 
-      let porcentaje =
-        metaTotal > 0
-          ? (avanceReal / metaTotal) * 100
-          : avanceReal > 0
-            ? 100
-            : 0;
+      const porcentaje = metaTotal > 0 ? (avanceReal / metaTotal) * 100 : (avanceReal > 0 ? 100 : 0);
 
       return {
         id_plan: datosTema.id_referencia,
         tema: datosTema.tema,
         objetivo: Array.from(datosTema.objetivosSet).join(" + "),
-        area: areasLista.join(", "),
+        area: Array.from(datosTema.areasSet).join(", "),
         mes: Array.from(datosTema.mesesSet).join(" / "),
         meta_total: metaTotal,
         avance_real: avanceReal,
