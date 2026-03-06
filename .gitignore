@@ -12,3 +12,9 @@ Thumbs.db
 *.log
 
 backend/uploads/
+.env*
+.env.local
+node_modules/
+.next/
+dist/
+build/
