@@ -33,9 +33,17 @@ const normalizar = (texto) => {
     : "";
 };
 
-// 🟢 1. SUBIR PLAN ANUAL (CON CORRECCIÓN DE CATEGORÍA/EJE)
+// 🟢 1. SUBIR PLAN ANUAL (AHORA CON PROTECCIÓN ANTI-AUDITOR)
 const subirPlanAnual = async (req, res) => {
   try {
+    // 🛡️ PROTECCIÓN DE ROL: Un auditor NO puede modificar la base de datos
+    if (req.user?.rol === "Auditor") {
+      return res.status(403).json({
+        error:
+          "Acceso denegado: Los auditores no pueden importar el plan anual",
+      });
+    }
+
     if (!req.file)
       return res.status(400).json({ error: "No se subió ningún archivo" });
 
@@ -43,24 +51,13 @@ const subirPlanAnual = async (req, res) => {
     if (!ExcelJS) ExcelJS = require("exceljs");
     const workbook = new ExcelJS.Workbook();
 
-    // 🟢 CORRECCIÓN 1: Usamos .load(buffer) en lugar de .readFile(path)
-    // Porque estamos usando memoryStorage
     await workbook.xlsx.load(req.file.buffer);
 
-    // ... (Tu lógica de Módulos se mantiene igual, la omito para ahorrar espacio) ...
-    // ... Si tienes mapaTemarios, úsalo aquí ...
-    const mapaTemarios = new Map(); // (Asegúrate de copiar tu lógica de módulos si la usas)
-
-    // ---------------------------------------------------------
-    // PASO 2: LEER PLAN
-    // ---------------------------------------------------------
     const sheetPlan = workbook.worksheets[0];
     const nuevosPlanes = [];
     let stats = { directos: 0, agrupados: 0, huerfanos: 0, ignorados: 0 };
-
     let dataStartRow = 0;
 
-    // 🟢 CORRECCIÓN 2: Agregamos 'categoria' al índice
     let colIndexes = {
       tema: 0,
       area: 0,
@@ -104,14 +101,12 @@ const subirPlanAnual = async (req, res) => {
             colIndexes.area = x.col;
           else if (x.txt.includes("clasificación"))
             colIndexes.clasificacion = x.col;
-          // 🟢 CORRECCIÓN 3: Detectamos EJE o CATEGORÍA
           else if (
             x.txt.includes("categoría") ||
             x.txt.includes("categoria") ||
             x.txt.includes("eje")
           )
             colIndexes.categoria = x.col;
-
           if (
             colIndexes.mesesStart === 0 &&
             (x.txt.includes("ene") || x.txt.includes("jan"))
@@ -121,7 +116,6 @@ const subirPlanAnual = async (req, res) => {
       }
     });
 
-    // Valores por defecto si falla la detección
     if (colIndexes.tema === 0) {
       dataStartRow = 12;
       colIndexes = {
@@ -141,8 +135,6 @@ const subirPlanAnual = async (req, res) => {
       const areaNombre =
         colIndexes.area > 0 ? row.getCell(colIndexes.area).text?.trim() : null;
 
-      // 🔴 1. FILTRO DE LIMPIEZA AGRESIVO
-      // Si el texto normalizado es igual a un encabezado, LO SALTAMOS
       const temaCheck = normalizar(temaExcel || "");
       const areaCheck = normalizar(areaNombre || "");
 
@@ -178,21 +170,13 @@ const subirPlanAnual = async (req, res) => {
         colIndexes.clasificacion > 0
           ? row.getCell(colIndexes.clasificacion).text?.trim()
           : "Capacitación";
-
-      // 🟢 CORRECCIÓN 4: Leemos el valor de la columna EJE/CATEGORÍA
       let categoriaFinal =
         colIndexes.categoria > 0
           ? row.getCell(colIndexes.categoria).text?.trim()
           : "Otros";
-      // Limpieza básica por si viene vacío
       if (!categoriaFinal || categoriaFinal === "null")
         categoriaFinal = "Otros";
 
-      // ... (Tu lógica de agrupación con mapaTemarios sigue aquí) ...
-      // Como no tengo tu mapaTemarios completo en este snippet,
-      // asumo que lo tienes o usas el tema directo.
-
-      // Lógica simplificada de Meses
       let mesDetectado = "Por Definir";
       if (colIndexes.mesesStart > 0) {
         for (let i = 0; i < 12; i++) {
@@ -202,7 +186,6 @@ const subirPlanAnual = async (req, res) => {
             (cell.value && String(cell.value).trim()) ||
             (cell.fill && cell.fill.type === "pattern")
           ) {
-            // Lógica simple de mes, puedes usar tu MONTH_MAP aquí
             mesDetectado = "Programado";
             break;
           }
@@ -216,7 +199,7 @@ const subirPlanAnual = async (req, res) => {
         areas_objetivo: areaNombre,
         mes_programado: mesDetectado,
         clasificacion: clasificacion,
-        categoria: categoriaFinal, // 🟢 AQUÍ GUARDAMOS "Gobernanza"
+        categoria: categoriaFinal,
       });
     });
 
@@ -224,8 +207,6 @@ const subirPlanAnual = async (req, res) => {
     if (nuevosPlanes.length > 0) {
       await prisma.planAnual.createMany({ data: nuevosPlanes });
     }
-
-    // No necesitamos fs.unlink porque está en memoria
 
     res.json({
       mensaje: "Importación completada",
@@ -238,13 +219,26 @@ const subirPlanAnual = async (req, res) => {
   }
 };
 
-// --- 2. OBTENER AVANCE (DICCIONARIO SINCRONIZADO + FILTROS) ---
+// 🟢 2. OBTENER AVANCE (CORREGIDO PARA EVITAR ERROR UNDEFINED)
 const obtenerAvance = async (req, res) => {
   try {
+    // 🟢 SOLUCIÓN: Extraemos con seguridad por si req.user no está definido
+    const id_usuario = req.user?.id_usuario || null;
+    const rol = req.user?.rol || "Desconocido";
+
+    // 🛡️ FILTRO ESTRICTO:
+    // Si es Admin o Auditor, ve TODO ({}).
+    // Si es Supervisor (o no tiene rol), solo ve lo suyo. Si no hay id_usuario, buscamos -1 para que por seguridad no devuelva nada.
+    const filtroCapacitaciones =
+      rol === "Administrador" || rol === "Auditor"
+        ? {}
+        : { creado_por: id_usuario || -1 };
+
     const [planes, trabajadores, capacitaciones] = await Promise.all([
       prisma.planAnual.findMany(),
       prisma.trabajadores.findMany({ where: { estado: true } }),
       prisma.capacitaciones.findMany({
+        where: filtroCapacitaciones, // Aplicamos el filtro seguro
         include: { participantes: { select: { dni: true } } },
       }),
     ]);
@@ -273,7 +267,6 @@ const obtenerAvance = async (req, res) => {
       }
       const entry = temasUnificados[temaNorm];
       if (plan.mes_programado) entry.mesesSet.add(plan.mes_programado);
-
       const objLimpio = plan.objetivo ? plan.objetivo.replace("Original: ", "") : "";
       if (objLimpio) entry.objetivosSet.add(objLimpio);
 
@@ -319,14 +312,10 @@ const obtenerAvance = async (req, res) => {
             const planPideOperaciones = palabrasOperaciones.some((op) => areaPlan.includes(op));
             if (!planPideOperaciones) return false;
           }
-
-          // Regla: AGRICOLA (Excluye Riego, Taller, RRHH)
           if (areaPlan.includes("agricola")) {
             const prohibidos = ["riego", "taller", "mecanico", "mecanizacion", "mantenimiento", "rrhh", "recursos humanos", "operaciones"];
             if (prohibidos.some((p) => t.areaN.includes(p))) return false;
           }
-
-          // Regla: RIEGO (Excluye Agricola general, Taller, Operaciones)
           if (areaPlan.includes("riego")) {
             const prohibidos = ["operaciones", "agricola", "campo", "taller"];
             if (prohibidos.some((p) => t.areaN.includes(p))) return false;

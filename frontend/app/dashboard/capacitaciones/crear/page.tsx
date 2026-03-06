@@ -13,7 +13,7 @@ import { useTheme } from 'next-themes';
 import {
     ArrowLeft, Save, UserPlus, Trash2, FileText, Clock, Briefcase,
     Building2, CheckCircle2, UploadCloud, Loader2, Image as ImageIcon,
-    PenTool, Camera, X, Search, UserCheck, Users
+    PenTool, Camera, X, Search, UserCheck, Users, AlertCircle
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import SignatureCanvas from 'react-signature-canvas';
@@ -111,6 +111,9 @@ export default function CrearCapacitacionPage() {
         setMounted(true);
     }, []);
 
+    // 🟢 ESTADO PARA ALERTAS FRONTEND
+    const [mensajeAlerta, setMensajeAlerta] = useState<{ tipo: 'error' | 'exito', texto: string } | null>(null);
+
     // --- ESTADOS ---
     const [planes, setPlanes] = useState<PlanItem[]>([]);
     const [sugerencias, setSugerencias] = useState<PlanItem[]>([]);
@@ -125,16 +128,16 @@ export default function CrearCapacitacionPage() {
     const [indiceFirmaActiva, setIndiceFirmaActiva] = useState<number | null>(null);
     const workerPadRef = useRef<SignatureCanvas>(null);
     const [empresaConfig, setEmpresaConfig] = useState<EmpresaConfig | null>(null);
-    const params = useParams(); // 2. Usar el hook
-    const id = params?.id; // 3. Obtener el ID
+    const params = useParams();
+    const id = params?.id;
 
     useEffect(() => {
-        if (!authLoading && user?.rol === 'Auditor') {
+        if (!authLoading && user?.rol === 'auditor') {
             router.push('/dashboard');
         }
     }, [user, authLoading, router]);
 
-    const { register, control, handleSubmit, setValue, watch, formState: { errors } } = useForm<Inputs>({
+    const { register, control, handleSubmit, setValue, watch, setError, setFocus, formState: { errors } } = useForm<Inputs>({
         defaultValues: {
             fecha: new Date().toISOString().split('T')[0],
             hora_inicio: "08:00",
@@ -189,12 +192,8 @@ export default function CrearCapacitacionPage() {
         participantesWatch.forEach(p => {
             if (p.dni) {
                 const generoRaw = String(p.genero || '').trim().toUpperCase();
-
-                if (['M', 'MASCULINO', 'HOMBRE'].includes(generoRaw)) {
-                    hombres++;
-                } else if (['F', 'FEMENINO', 'MUJER'].includes(generoRaw)) {
-                    mujeres++;
-                }
+                if (['M', 'MASCULINO', 'HOMBRE'].includes(generoRaw)) hombres++;
+                else if (['F', 'FEMENINO', 'MUJER'].includes(generoRaw)) mujeres++;
             }
         });
 
@@ -217,10 +216,7 @@ export default function CrearCapacitacionPage() {
     };
 
     const seleccionarTema = (plan: PlanItem) => {
-        console.log("Datos del Plan:", plan);
-
-        // 1. Asignar Tema y Actividad
-        setValue('tema_principal', (plan.tema || '').trim());
+        setValue('tema_principal', (plan.tema || '').trim(), { shouldValidate: true });
 
         const tipoActividad = (plan.clasificacion || '').toLowerCase();
         let actividadFinal = 'Capacitación';
@@ -229,42 +225,23 @@ export default function CrearCapacitacionPage() {
         else if (tipoActividad.includes('charla')) actividadFinal = 'Charla';
         else if (tipoActividad.includes('simulacro')) actividadFinal = 'Simulacro';
         else if (tipoActividad.includes('entrenamiento')) actividadFinal = 'Entrenamiento';
-        setValue('actividad', actividadFinal);
+        setValue('actividad', actividadFinal, { shouldValidate: true });
 
-        // 3. 🟢 ASIGNAR CATEGORÍA (Lógica estricta)
-        // Buscamos el dato en 'categoria' (BD) o 'eje' (si viniera del excel directo)
         const categoriaBD = (plan.categoria || plan.eje || '').trim();
         let categoriaFinal = 'Otros';
-
-        // Mapeo exacto de lo que dice el Excel/BD a lo que dice el <select>
-        // Normalizamos para ignorar mayúsculas/minúsculas y tildes
         const catNorm = normalizar(categoriaBD);
 
-        if (catNorm.includes('social') || catNorm.includes('humanos')) {
-            categoriaFinal = 'Responsabilidad Social';
-        } else if (catNorm.includes('ambiente') || catNorm.includes('ambiental')) {
-            categoriaFinal = 'Medio Ambiente';
-        } else if (catNorm.includes('inocuidad') || catNorm.includes('alimentaria')) {
-            categoriaFinal = 'Inocuidad';
-        } else if (catNorm.includes('seguridad') || catNorm.includes('sst') || catNorm.includes('ssoma')) {
-            categoriaFinal = 'Seguridad';
-        } else if (catNorm.includes('cadena') || catNorm.includes('suministro')) {
-            categoriaFinal = 'Cadena';
-        } else if (catNorm.includes('gobernanza') || catNorm.includes('gobierno') || catNorm.includes('etica')) {
-            categoriaFinal = 'Gobernanza';
-        }
+        if (catNorm.includes('social') || catNorm.includes('humanos')) categoriaFinal = 'Responsabilidad Social';
+        else if (catNorm.includes('ambiente') || catNorm.includes('ambiental')) categoriaFinal = 'Medio Ambiente';
+        else if (catNorm.includes('inocuidad') || catNorm.includes('alimentaria')) categoriaFinal = 'Inocuidad';
+        else if (catNorm.includes('seguridad') || catNorm.includes('sst') || catNorm.includes('ssoma')) categoriaFinal = 'Seguridad';
+        else if (catNorm.includes('cadena') || catNorm.includes('suministro')) categoriaFinal = 'Cadena';
+        else if (catNorm.includes('gobernanza') || catNorm.includes('gobierno') || catNorm.includes('etica')) categoriaFinal = 'Gobernanza';
 
-        console.log("Categoría asignada:", categoriaFinal);
-        setValue('categoria', categoriaFinal);
-
-        // 4. Asignar Áreas y Objetivo
-        if (plan.areas_objetivo) setValue('area_objetivo', plan.areas_objetivo);
-        else setValue('area_objetivo', '');
-
-        if (plan.objetivo) setValue('objetivo', plan.objetivo);
-        else setValue('objetivo', '');
-
-        setValue('modalidad', 'Interna');
+        setValue('categoria', categoriaFinal, { shouldValidate: true });
+        setValue('area_objetivo', plan.areas_objetivo || '');
+        setValue('objetivo', plan.objetivo || '');
+        setValue('modalidad', 'Interna', { shouldValidate: true });
         setMostrarSugerencias(false);
     };
 
@@ -273,29 +250,16 @@ export default function CrearCapacitacionPage() {
     // --- MANEJO DE EVIDENCIAS Y FIRMAS ---
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files.length > 0) {
-            // 1. Convertimos FileList a Array real
             const newFiles = Array.from(e.target.files);
-
-            // 2. Unimos con lo que ya tenías (para no borrar las anteriores)
             const updatedFiles = [...evidencias, ...newFiles];
-
-            // 3. Actualizamos la VISTA PREVIA
             setEvidencias(updatedFiles);
-
-            // 4. 🟢 Actualizamos EL FORMULARIO (Esto es lo que faltaba)
-            // Nota: React Hook Form acepta arrays de archivos si usamos setValue
             setValue("evidencias", updatedFiles as unknown as FileList, { shouldValidate: true });
         }
     };
 
     const removeEvidencia = (index: number) => {
-        // 1. Filtramos para quitar la foto del índice seleccionado
         const updatedFiles = evidencias.filter((_, i) => i !== index);
-
-        // 2. Actualizamos VISTA
         setEvidencias(updatedFiles);
-
-        // 3. 🟢 Actualizamos FORMULARIO
         setValue("evidencias", updatedFiles as unknown as FileList, { shouldValidate: true });
     };
 
@@ -317,7 +281,6 @@ export default function CrearCapacitacionPage() {
             trabajadoresFiltrados = trabajadoresFiltrados.filter(t => normalizar(t.cargo) === cargoBusqueda);
         }
 
-        // --- GENERACIÓN DINÁMICA ---
         const areasUnicas = Array.from(new Set(listaTrabajadores.map(t => t.area).filter(Boolean))).sort();
         const areasDisponibles = areasUnicas.map(a => ({ value: a, label: a }));
 
@@ -328,12 +291,12 @@ export default function CrearCapacitacionPage() {
         const cargosDisponibles = cargosUnicos.map(c => ({ value: c, label: c }));
 
         const opcionesNombres = trabajadoresFiltrados.map(t => ({
-            value: String(t.dni).padStart(8, '0'), // 🟢 Forzamos 8 dígitos
+            value: String(t.dni).padStart(8, '0'),
             label: `${t.apellidos} ${t.nombres}`,
             datos: t
         }));
         const opcionesDNI = trabajadoresFiltrados.map(t => ({
-            value: String(t.dni).padStart(8, '0'), // 🟢 Forzamos 8 dígitos
+            value: String(t.dni).padStart(8, '0'),
             label: String(t.dni).padStart(8, '0'),
             datos: t
         }));
@@ -342,29 +305,22 @@ export default function CrearCapacitacionPage() {
 
     const autocompletarFila = (index: number, trabajador: TrabajadorSelect) => {
         if (!trabajador) return;
-
-        // --- VALIDACIÓN ANTI-DUPLICADOS ---
-        // Buscamos si el DNI ya existe en otra fila (ignorando la fila actual que estamos editando)
         const yaExiste = participantesWatch.some((p, i) => i !== index && p.dni === trabajador.dni);
 
         if (yaExiste) {
-            alert(`⚠️ ¡Atención! El trabajador ${trabajador.apellidos} ${trabajador.nombres} ya está en la lista.`);
-
-            // Limpiamos los campos para impedir la selección
+            setMensajeAlerta({ tipo: 'error', texto: `El trabajador ${trabajador.apellidos} ${trabajador.nombres} ya está en la lista.` });
+            window.scrollTo({ top: 0, behavior: 'smooth' });
             setValue(`participantes.${index}.dni`, '');
             setValue(`participantes.${index}.apellidos_nombres`, '');
-            return; // Cortamos la función aquí
+            return;
         }
 
-        // --- SI NO EXISTE, PROCEDEMOS NORMALMENTE ---
         setValue(`participantes.${index}.dni`, trabajador.dni);
         setValue(`participantes.${index}.apellidos_nombres`, `${trabajador.apellidos} ${trabajador.nombres}`);
         setValue(`participantes.${index}.area`, trabajador.area);
         setValue(`participantes.${index}.cargo`, trabajador.cargo);
-
         const generoNorm = trabajador.genero ? trabajador.genero.toUpperCase() : 'M';
         setValue(`participantes.${index}.genero`, generoNorm);
-
         if (trabajador.firma_url) setValue(`participantes.${index}.firma_url`, trabajador.firma_url);
     };
 
@@ -383,18 +339,15 @@ export default function CrearCapacitacionPage() {
         if (workerPadRef.current && !workerPadRef.current.isEmpty() && indiceFirmaActiva !== null) {
             const canvas = workerPadRef.current.getCanvas();
             const base64 = canvas.toDataURL('image/png');
-
             const dni = participantesWatch[indiceFirmaActiva].dni || 'sin_dni';
             const url = await uploadBase64(base64, `firma_trab_${dni}_${Date.now()}.png`);
 
             if (url) {
-                // 🟢 Actualizamos el valor y forzamos la validación para que se refleje en la lista
                 setValue(`participantes.${indiceFirmaActiva}.firma_url`, url, {
                     shouldValidate: true,
                     shouldDirty: true
                 });
             }
-
             cerrarModalFirma();
         }
     };
@@ -408,7 +361,7 @@ export default function CrearCapacitacionPage() {
                 if (url) setValue('expositor_firma', url);
             } catch (error) {
                 console.error(error);
-                alert("Error al subir firma expositor");
+                setMensajeAlerta({ tipo: 'error', texto: "Error al subir firma del expositor" });
             } finally {
                 setUploadingExpositor(false);
             }
@@ -420,71 +373,61 @@ export default function CrearCapacitacionPage() {
         const bstr = atob(arr[1]);
         let n = bstr.length;
         const u8arr = new Uint8Array(n);
-        while (n--) {
-            u8arr[n] = bstr.charCodeAt(n);
-        }
+        while (n--) { u8arr[n] = bstr.charCodeAt(n); }
         return new File([u8arr], filename, { type: "image/png" });
+    };
+
+    const generarCodigoActa = () => {
+        // 1. Letra de la Sede
+        const sede = watch('sede_empresa') === 'Majes' ? 'M' : 'O';
+
+        // 2. Año y Mes
+        const fecha = new Date();
+        const yy = String(fecha.getFullYear()).slice(-2);
+        const mm = String(fecha.getMonth() + 1).padStart(2, '0');
+
+        // 3. Iniciales del Usuario (Si se llama Juan Perez -> JP)
+        const nombreUsr = user?.nombre || 'US';
+        const iniciales = nombreUsr.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+
+        // 4. Número aleatorio de 3 dígitos (del 100 al 999)
+        const aleatorio = Math.floor(100 + Math.random() * 900);
+
+        // Resultado final: ACT-M-2603-JP-842
+        const nuevoCodigo = `ACT-${sede}-${yy}${mm}-${iniciales}-${aleatorio}`;
+
+        // Lo ponemos en el input y validamos
+        setValue('codigo_acta', nuevoCodigo, { shouldValidate: true });
     };
 
     const onSubmit: SubmitHandler<Inputs> = async (data) => {
         setLoading(true);
+        setMensajeAlerta(null); // Limpiamos alertas previas
         try {
             const formData = new FormData();
 
-            // 👇 LOG DE DIAGNÓSTICO 1
-            console.log("🔍 DATA RECIBIDA DEL FORMULARIO:", data);
-            console.log("🔍 MODO FIRMA:", modoFirma);
-
-            // ---------------------------------------------------------
             // 1. FIRMA
-            // ---------------------------------------------------------
             if (modoFirma === 'pantalla' && signaturePadRef.current && !signaturePadRef.current.isEmpty()) {
-                console.log("✅ Entró a firma por PANTALLA"); // <--- MIRA SI SALE ESTO
                 const pad = signaturePadRef.current;
                 const canvas = pad.getCanvas();
                 const base64 = canvas.toDataURL('image/png');
                 const archivoFirma = uploadBase64ToFile(base64, `firma_expositor_${Date.now()}.png`);
                 formData.append('expositor_firma', archivoFirma);
-            }
-
-            else if (data.expositor_firma && (data.expositor_firma as unknown as FileList)[0] instanceof File) {
-                console.log("✅ Entró a firma por INPUT FILE"); // <--- MIRA SI SALE ESTO
+            } else if (data.expositor_firma && (data.expositor_firma as unknown as FileList)[0] instanceof File) {
                 const fileList = data.expositor_firma as unknown as FileList;
                 formData.append('expositor_firma', fileList[0]);
             }
 
-            else {
-                console.log("⚠️ NO SE DETECTÓ FIRMA NUEVA (Ni pantalla ni archivo)");
-                console.log("Tipo de dato firma:", typeof data.expositor_firma);
-                console.log("Valor firma:", data.expositor_firma);
-            }
-
-            // ---------------------------------------------------------
-            // 🟢 2. PROCESAR EVIDENCIAS (FOTOS)
-            // ---------------------------------------------------------
+            // 2. PROCESAR EVIDENCIAS (FOTOS)
             if (data.evidencias && data.evidencias.length > 0) {
-                console.log(`📸 Procesando ${data.evidencias.length} evidencias...`);
-
                 for (let i = 0; i < data.evidencias.length; i++) {
-                    const file = data.evidencias[i];
-
-                    // Verificamos en consola qué estamos a punto de enviar
-                    console.log(`   - Archivo [${i}]:`, file.name, "Tipo:", file.type);
-
-                    // 🟢 SIN VALIDACIONES ESTRICTAS: Simplemente lo agregamos
-                    formData.append('evidencias', file);
+                    formData.append('evidencias', data.evidencias[i]);
                 }
-            } else {
-                console.log("⚠️ data.evidencias está vacío o indefinido");
-                // Intento de rescate: a veces el input file no se registra bien en 'data'
-                // pero si tienes un ref, podrías buscarlo. Por ahora dejémoslo así.
             }
 
-            // ---------------------------------------------------------
-            // 🟢 3. CAMPOS DE TEXTO SIMPLES
-            // ---------------------------------------------------------
+            // 3. CAMPOS DE TEXTO SIMPLES
             Object.keys(data).forEach((key) => {
-                const k = key as keyof Inputs; // Casteo seguro
+                const k = key as keyof Inputs;
                 if (k !== 'participantes' && k !== 'expositor_firma' && k !== 'evidencias') {
                     const value = data[k];
                     if (value !== undefined && value !== null) {
@@ -493,68 +436,82 @@ export default function CrearCapacitacionPage() {
                 }
             });
 
-            // ---------------------------------------------------------
-            // 🟢 4. PARTICIPANTES (JSON String)
-            // ---------------------------------------------------------
+            // 4. PARTICIPANTES (JSON String)
             if (data.participantes) {
                 formData.append('participantes', JSON.stringify(data.participantes));
             }
 
-            // ---------------------------------------------------------
-            // 🚀 5. ENVÍO A LA API
-            // ---------------------------------------------------------
+            // 5. ENVÍO A LA API
             let response;
+            const config = { headers: { "Content-Type": undefined } };
 
-            // 🟢 EL FIX DEFINITIVO: Configuración de cabeceras
-            // Esto obliga al navegador a enviar los archivos correctamente
-            const config = {
-                headers: {
-                    "Content-Type": undefined,
-                },
-            };
-
-            // 🟢 CORRECCIÓN TS: 'id' ahora viene de useParams
             if (id) {
-                console.log(`🔄 Actualizando capacitación ID: ${id}...`);
-                // 👇 AQUI AGREGAMOS 'config' COMO TERCER ARGUMENTO
                 response = await api.put(`/capacitaciones/${id}`, formData, config);
             } else {
-                console.log("✨ Creando nueva capacitación...");
-                // 👇 AQUI AGREGAMOS 'config' COMO TERCER ARGUMENTO
                 response = await api.post('/capacitaciones', formData, config);
             }
 
             if (response.status === 200 || response.status === 201) {
-                alert(id ? '¡Capacitación actualizada correctamente! 🔄' : '¡Capacitación registrada con éxito! 📄📸');
-                router.push('/dashboard');
+                setMensajeAlerta({
+                    tipo: 'exito',
+                    texto: id ? '¡Capacitación actualizada correctamente! 🔄' : '¡Capacitación registrada con éxito! 📄'
+                });
+
+                setTimeout(() => {
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                }, 100);
+
+                setTimeout(() => {
+                    router.push('/dashboard');
+                }, 2000);
+
+                return;
             }
 
-        } catch (error: unknown) { // 🟢 CORRECCIÓN ESLINT: Usar unknown en lugar de any
-            console.error("🔥 Error al procesar:", error);
+        } catch (error: unknown) {
+            console.error("🔥 Error completo:", error);
+            let mensajeError = "Ocurrió un error al enviar el formulario.";
 
-            // Verificamos si error tiene la estructura de Axios sin usar 'any' explícito
-            let mensajeError = "Error desconocido";
             if (error && typeof error === 'object' && 'response' in error) {
-                // @ts-expect-error: Ignoramos error de tipo para acceder a data de forma rápida
-                mensajeError = error.response?.data?.error || error.message;
+                // @ts-expect-error: Acceso a axios
+                const apiError = error.response?.data?.error || error.response?.data?.message || error.message;
+                mensajeError = apiError;
+
+                const textoError = String(apiError).toLowerCase();
+                if (textoError.includes('código de acta') || textoError.includes('duplicad') || textoError.includes('registrado')) {
+                    mensajeError = "El Código de Acta ingresado ya existe. Por favor, usa uno diferente.";
+                    setError("codigo_acta", { type: "manual", message: "Código duplicado" });
+
+                    // 🟢 NUEVO: Ponemos el cursor automáticamente en el campo rojo
+                    setTimeout(() => setFocus("codigo_acta"), 100);
+                }
+
             } else if (error instanceof Error) {
                 mensajeError = error.message;
             }
 
-            alert(`Error: ${mensajeError}`);
+            setMensajeAlerta({ tipo: 'error', texto: mensajeError });
+
+            // 🟢 NUEVO: Retrasamos el scroll 100ms para asegurar que React ya dibujó la alerta arriba
+            setTimeout(() => {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }, 100);
+
         } finally {
             setLoading(false);
         }
     };
 
+    // 🟢 ERROR DE VALIDACIÓN: El usuario olvidó algún campo obligatorio
     const onError: SubmitErrorHandler<Inputs> = (e) => {
         console.error("Errores:", e);
-        alert("Faltan campos obligatorios. Revisa los bordes rojos.");
+        setMensajeAlerta({ tipo: 'error', texto: "Faltan campos obligatorios. Revisa los recuadros resaltados en rojo." });
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
     const temaRegister = register("tema_principal", { required: true });
 
-    if (authLoading || user?.rol === 'Auditor') return null;
+    if (authLoading || user?.rol === 'auditor') return null;
 
     const isDark = mounted && theme === 'dark';
 
@@ -592,11 +549,11 @@ export default function CrearCapacitacionPage() {
         })
     };
 
-
     const cargarTrabajadoresDeArea = () => {
         const areaObjetivo = watch('area_objetivo');
         if (!areaObjetivo) {
-            alert("Primero selecciona un tema.");
+            setMensajeAlerta({ tipo: 'error', texto: "Primero selecciona un tema." });
+            window.scrollTo({ top: 0, behavior: 'smooth' });
             return;
         }
 
@@ -623,28 +580,14 @@ export default function CrearCapacitacionPage() {
             const catT = normalizar(t.categoria || "");
             const cargoT = normalizar(t.cargo || "");
 
-            // 🛑 REGLA DE ORO: CUARENTENA DE OPERACIONES
-            // Definimos qué palabras identifican al área de Operaciones
             const palabrasOperaciones = ["operaciones", "planta", "packing"];
-
-            // ¿El trabajador pertenece REALMENTE a Operaciones?
             const esDeOperaciones = palabrasOperaciones.some(op => areaT.includes(op));
 
-            // Iteramos sobre las áreas que el usuario pidió
             return areasBusqueda.some(aPlan => {
-
-                // --- 1. FILTRO BLINDADO PARA OPERACIONES ---
-                // Si el trabajador es de Operaciones, PERO el área que estamos evaluando en este momento del bucle
-                // NO es "Operaciones" (ni sus sinónimos), entonces LO BLOQUEAMOS.
-                // Esto evita que un "Asistente Logístico" de "Operaciones" entre cuando pedimos "Logística".
                 if (esDeOperaciones) {
                     const pideOperaciones = palabrasOperaciones.some(op => aPlan.includes(op));
-                    if (!pideOperaciones) {
-                        return false; // ¡ADIÓS! No te queremos aquí si no te llamamos.
-                    }
+                    if (!pideOperaciones) return false;
                 }
-
-                // --- 2. FILTROS ESPECÍFICOS (Agricola vs Riego) ---
                 if (aPlan.includes("agricola")) {
                     const prohibidos = ["riego", "taller", "mecanico", "mecanizacion", "mantenimiento", "rrhh", "recursos humanos"];
                     if (prohibidos.some(p => areaT.includes(p))) return false;
@@ -653,8 +596,6 @@ export default function CrearCapacitacionPage() {
                     const prohibidos = ["agricola", "campo", "taller"];
                     if (prohibidos.some(p => areaT.includes(p))) return false;
                 }
-
-                // --- 3. Lógica de Coincidencia (Si sobrevivió a los filtros) ---
                 if (diccionario[aPlan]) {
                     return diccionario[aPlan].some(sinonimo =>
                         areaT.includes(sinonimo) || catT.includes(sinonimo) || cargoT.includes(sinonimo)
@@ -665,11 +606,11 @@ export default function CrearCapacitacionPage() {
         });
 
         if (sugeridos.length === 0) {
-            alert(`No se encontraron trabajadores para: "${areaObjetivo}".`);
+            setMensajeAlerta({ tipo: 'error', texto: `No se encontraron trabajadores para el área: "${areaObjetivo}".` });
+            window.scrollTo({ top: 0, behavior: 'smooth' });
             return;
         }
 
-        // --- LÓGICA DE LLENADO ---
         const hayDatosPrevios = fields.length > 0 && (fields.length > 1 || participantesWatch[0].dni !== "");
         let debeReemplazar = false;
 
@@ -696,23 +637,45 @@ export default function CrearCapacitacionPage() {
     };
 
     return (
-        <div className="max-w-6xl mx-auto space-y-6 pb-20 relative">
-            {/* MODAL FIRMA */}
+        <div className="max-w-6xl mx-auto space-y-6 pb-20 relative px-4">
+
+            {/* 🟢 BANNER DE ALERTAS FLOTANTE */}
+            {mensajeAlerta && (
+                <div className={`fixed top-6 left-1/2 transform -translate-x-1/2 z-[100] w-[95%] max-w-md p-4 rounded-xl flex items-start gap-3 shadow-2xl border transition-all animate-in slide-in-from-top-8 fade-in ${mensajeAlerta.tipo === 'error' ? 'bg-white dark:bg-slate-900 border-red-500 text-red-800 dark:text-red-200' : 'bg-white dark:bg-slate-900 border-green-500 text-green-800 dark:text-green-200'}`}>
+                    <div className={`p-2 rounded-full ${mensajeAlerta.tipo === 'error' ? 'bg-red-100 dark:bg-red-900/30' : 'bg-green-100 dark:bg-green-900/30'}`}>
+                        {mensajeAlerta.tipo === 'error' ? <AlertCircle className="text-red-600 dark:text-red-400" size={24} /> : <CheckCircle2 className="text-green-600 dark:text-green-400" size={24} />}
+                    </div>
+                    <div className="flex-1 pt-1">
+                        <h4 className="font-extrabold text-sm">{mensajeAlerta.tipo === 'error' ? 'Acción Requerida' : 'Operación Exitosa'}</h4>
+                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{mensajeAlerta.texto}</p>
+                    </div>
+                    <button type="button" onClick={() => setMensajeAlerta(null)} className="p-1 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full transition-colors">
+                        <X size={20} className="text-gray-400" />
+                    </button>
+                </div>
+            )}
+
+            {/* MODAL FIRMA TRABAJADOR */}
             {indiceFirmaActiva !== null && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md overflow-hidden border border-gray-100 dark:border-slate-700">
-                        <div className="bg-gray-100 dark:bg-slate-900/50 px-4 py-3 border-b border-gray-100 dark:border-slate-700 flex justify-between items-center">
-                            <h3 className="font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2"><PenTool size={18} /> Firma Digital</h3>
-                            <button onClick={cerrarModalFirma}><X size={24} className="text-gray-500 hover:text-red-500 transition-colors" /></button>
+                <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+                    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-gray-100 dark:border-slate-700 animate-in zoom-in-95 duration-200">
+                        <div className="bg-gray-50 dark:bg-slate-900/50 px-5 py-4 border-b border-gray-100 dark:border-slate-700 flex justify-between items-center">
+                            <h3 className="font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+                                <PenTool size={20} className="text-blue-500" /> Firma Digital
+                            </h3>
+                            <button type="button" onClick={cerrarModalFirma} className="p-1 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-full transition-colors">
+                                <X size={24} className="text-gray-500" />
+                            </button>
                         </div>
-                        <div className="p-4 bg-white dark:bg-slate-800">
-                            <div className="border-2 border-dashed rounded-lg bg-gray-50 dark:bg-slate-900/50 border-gray-200 dark:border-slate-700">
+                        <div className="p-6 bg-white dark:bg-slate-900/20">
+                            <div className="border-2 border-dashed rounded-xl bg-gray-50 dark:bg-slate-950 border-gray-200 dark:border-slate-700 overflow-hidden shadow-inner">
                                 <SignaturePad ref={workerPadRef} />
                             </div>
+                            <p className="text-center text-[10px] text-gray-400 mt-3 uppercase font-bold tracking-widest leading-none">Firma dentro del recuadro</p>
                         </div>
-                        <div className="p-4 border-t border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/50 flex justify-end gap-3">
-                            <button onClick={() => workerPadRef.current?.clear()} className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 rounded-lg text-sm transition-colors">Limpiar</button>
-                            <button onClick={guardarFirmaModal} className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold shadow-lg shadow-blue-500/20 transition-all active:scale-95">Aceptar</button>
+                        <div className="p-5 border-t border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/50 flex justify-end gap-3">
+                            <button type="button" onClick={() => workerPadRef.current?.clear()} className="px-4 py-2 text-gray-500 dark:text-gray-400 hover:text-red-500 font-bold text-sm transition-colors">Limpiar</button>
+                            <button type="button" onClick={guardarFirmaModal} className="px-8 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-lg shadow-blue-500/20 transition-all active:scale-95">Aceptar Firma</button>
                         </div>
                     </div>
                 </div>
@@ -734,43 +697,67 @@ export default function CrearCapacitacionPage() {
                 </div>
             </div>
 
-            {/* PANEL DE CONTEO EN VIVO (VISUAL) */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-2 animate-in fade-in transition-all">
-                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-900/30 p-3 rounded-xl flex items-center justify-between shadow-sm">
-                    <div><p className="text-xs font-bold text-blue-500 dark:text-blue-400 uppercase">Hombres</p><h3 className="text-2xl font-bold text-blue-700 dark:text-blue-300">{watch('total_hombres') || 0}</h3></div>
-                    <div className="bg-blue-100 dark:bg-blue-900/40 p-2 rounded-full text-blue-600 dark:text-blue-400"><UserCheck size={20} /></div>
+            {/* PANEL DE CONTEO EN VIVO */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-2 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="bg-white dark:bg-slate-800/40 p-5 rounded-2xl border border-blue-100 dark:border-blue-900/20 shadow-sm flex items-center justify-between transition-all hover:shadow-md hover:border-blue-500/30 group">
+                    <div>
+                        <p className="text-[10px] font-bold text-blue-500 dark:text-blue-400 uppercase tracking-widest mb-1">Hombres</p>
+                        <h3 className="text-3xl font-black text-blue-700 dark:text-blue-300 tabular-nums">{watch('total_hombres') || 0}</h3>
+                    </div>
+                    <div className="bg-blue-50 dark:bg-blue-900/30 p-3 rounded-2xl text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform"><UserCheck size={28} /></div>
                 </div>
-                <div className="bg-pink-50 dark:bg-pink-900/20 border border-pink-200 dark:border-pink-900/30 p-3 rounded-xl flex items-center justify-between shadow-sm">
-                    <div><p className="text-xs font-bold text-pink-500 dark:text-pink-400 uppercase">Mujeres</p><h3 className="text-2xl font-bold text-pink-700 dark:text-pink-300">{watch('total_mujeres') || 0}</h3></div>
-                    <div className="bg-pink-100 dark:bg-pink-900/40 p-2 rounded-full text-pink-600 dark:text-pink-400"><UserCheck size={20} /></div>
+                <div className="bg-white dark:bg-slate-800/40 p-5 rounded-2xl border border-pink-100 dark:border-pink-900/20 shadow-sm flex items-center justify-between transition-all hover:shadow-md hover:border-pink-500/30 group">
+                    <div>
+                        <p className="text-[10px] font-bold text-pink-500 dark:text-pink-400 uppercase tracking-widest mb-1">Mujeres</p>
+                        <h3 className="text-3xl font-black text-pink-700 dark:text-pink-300 tabular-nums">{watch('total_mujeres') || 0}</h3>
+                    </div>
+                    <div className="bg-pink-50 dark:bg-pink-900/30 p-3 rounded-2xl text-pink-600 dark:text-pink-400 group-hover:scale-110 transition-transform"><UserCheck size={28} /></div>
                 </div>
-                <div className="bg-gray-50 dark:bg-slate-800/50 border border-gray-200 dark:border-slate-700 p-3 rounded-xl flex items-center justify-between shadow-sm">
-                    <div><p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Total</p><h3 className="text-2xl font-bold text-gray-700 dark:text-gray-200">{watch('total_trabajadores') || 0}</h3></div>
-                    <div className="bg-gray-100 dark:bg-slate-700 p-2 rounded-full text-gray-600 dark:text-gray-400"><Users size={20} /></div>
+                <div className="bg-white dark:bg-slate-800/40 p-5 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm flex items-center justify-between transition-all hover:shadow-md hover:border-slate-500/30 group">
+                    <div>
+                        <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1">Total Asistentes</p>
+                        <h3 className="text-3xl font-black text-slate-700 dark:text-slate-200 tabular-nums">{watch('total_trabajadores') || 0}</h3>
+                    </div>
+                    <div className="bg-slate-50 dark:bg-slate-800 p-3 rounded-2xl text-slate-600 dark:text-slate-400 group-hover:scale-110 transition-transform"><Users size={28} /></div>
                 </div>
             </div>
 
             <form onSubmit={handleSubmit(onSubmit, onError)} className="space-y-6">
                 <input type="hidden" {...register("area_objetivo")} />
 
-                {/* 1. SEDE */}
-                <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700">
-                    <div className="flex items-center gap-2 mb-4 border-b border-gray-200 dark:border-slate-700 pb-2 text-blue-700 dark:text-blue-400"><Building2 size={20} /> <h3 className="font-bold">Sede</h3></div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* SECTION 1: SEDE Y CÓDIGO */}
+                <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700">
+                    <div className="flex items-center gap-2 mb-6 text-blue-700 dark:text-blue-400 font-bold border-b border-gray-50 dark:border-slate-700 pb-3">
+                        <Building2 size={20} /> <h3 className="uppercase tracking-widest text-sm">Información de Sede</h3>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Sede Principal</label>
+                            <label className="block text-[11px] font-bold text-gray-400 dark:text-slate-500 uppercase mb-3 tracking-widest">Sede de Ejecución</label>
                             <div className="flex gap-4">
-                                <label className={`flex items-center gap-2 cursor-pointer border p-3 rounded-lg w-full transition-all ${sedeSeleccionada === 'Majes' ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500' : 'border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700/50'}`}>
-                                    <input type="radio" value="Majes" {...register("sede_empresa")} className="accent-blue-600" /> <span className="font-bold text-sm text-gray-700 dark:text-gray-200">MAJES</span>
+                                <label className={`flex flex-1 items-center gap-3 cursor-pointer border-2 p-4 rounded-2xl transition-all ${sedeSeleccionada === 'Majes' ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 ring-4 ring-blue-500/10' : 'bg-gray-50 dark:bg-slate-900/50 border-transparent hover:border-gray-200 dark:hover:border-slate-700'}`}>
+                                    <input type="radio" value="Majes" {...register("sede_empresa")} className="accent-blue-600 w-4 h-4" />
+                                    <span className="font-bold text-gray-700 dark:text-gray-200">PEDREGAL - MAJES</span>
                                 </label>
-                                <label className={`flex items-center gap-2 cursor-pointer border p-3 rounded-lg w-full transition-all ${sedeSeleccionada === 'Olmos' ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500' : 'border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700/50'}`}>
-                                    <input type="radio" value="Olmos" {...register("sede_empresa")} className="accent-blue-600" /> <span className="font-bold text-sm text-gray-700 dark:text-gray-200">OLMOS</span>
+                                <label className={`flex flex-1 items-center gap-3 cursor-pointer border-2 p-4 rounded-2xl transition-all ${sedeSeleccionada === 'Olmos' ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 ring-4 ring-blue-500/10' : 'bg-gray-50 dark:bg-slate-900/50 border-transparent hover:border-gray-200 dark:hover:border-slate-700'}`}>
+                                    <input type="radio" value="Olmos" {...register("sede_empresa")} className="accent-blue-600 w-4 h-4" />
+                                    <span className="font-bold text-gray-700 dark:text-gray-200">TIERRAS NUEVAS - OLMOS</span>
                                 </label>
                             </div>
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Código Acta <span className="text-red-500">*</span></label>
-                            <input {...register("codigo_acta", { required: true })} className={`w-full border rounded px-3 py-2 bg-gray-50 dark:bg-slate-900/50 dark:text-gray-100 font-mono text-blue-900 border-gray-200 dark:border-slate-700 focus:ring-2 focus:ring-blue-500 outline-none transition-all ${errors.codigo_acta ? 'border-red-500' : ''}`} placeholder="ACT-2025-XXX" />
+                            <label className={`block text-[11px] font-bold uppercase mb-3 tracking-widest ${errors.codigo_acta ? 'text-red-600' : 'text-gray-400 dark:text-slate-500'}`}>Código de Acta Oficial</label>
+                            <div className="flex gap-2">
+                                <div className="relative flex-1">
+                                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-slate-600"><FileText size={18} /></div>
+                                    <input
+                                        {...register("codigo_acta", { required: "El código es obligatorio" })}
+                                        className={`w-full border-2 rounded-2xl pl-10 pr-3 py-3 font-mono font-bold outline-none transition-all ${errors.codigo_acta ? 'border-red-500 bg-red-50 dark:bg-red-950/20 ring-4 ring-red-500/10' : 'bg-gray-50 dark:bg-slate-900/50 border-transparent focus:border-blue-500 dark:text-blue-100'}`}
+                                        placeholder="ACT-YYYY-XXX"
+                                    />
+                                </div>
+                                <button type="button" onClick={generarCodigoActa} className="px-5 bg-slate-900 dark:bg-slate-700 text-white font-bold rounded-2xl hover:bg-black dark:hover:bg-slate-600 transition-all shadow-lg active:scale-95 text-sm">Auto-Generar</button>
+                            </div>
+                            {errors.codigo_acta && <span className="text-red-500 text-[10px] font-black mt-2 block uppercase animate-pulse">{errors.codigo_acta.message}</span>}
                         </div>
                     </div>
                 </div>
@@ -780,11 +767,23 @@ export default function CrearCapacitacionPage() {
                     <div className="flex items-center gap-2 mb-4 border-b border-gray-200 dark:border-slate-700 pb-2 text-blue-700 dark:text-blue-400"><Clock size={20} /> <h3 className="font-bold">Detalles</h3></div>
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
                         <div className="md:col-span-8 relative" ref={autocompleteRef}>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tema Principal <span className="text-red-500">*</span></label>
+                            <label className={`block text-sm font-medium mb-1 ${errors.tema_principal ? 'text-red-600 font-bold' : 'text-gray-700 dark:text-gray-300'}`}>
+                                Tema Principal <span className="text-red-500">*</span>
+                            </label>
                             <div className="relative">
-                                <input {...temaRegister} onChange={(e) => { temaRegister.onChange(e); handleTemaSearch(e.target.value); }} className="w-full border border-gray-200 dark:border-slate-700 rounded pl-9 pr-3 py-2 bg-white dark:bg-slate-900/50 text-gray-800 dark:text-gray-100 outline-none focus:ring-2 focus:ring-blue-500 transition-all" placeholder="Buscar tema..." autoComplete="off" />
-                                <Search className="absolute left-3 top-2.5 text-gray-400 dark:text-gray-500" size={18} />
+                                <input
+                                    {...temaRegister}
+                                    onChange={(e) => { temaRegister.onChange(e); handleTemaSearch(e.target.value); }}
+                                    className={`w-full border rounded pl-9 pr-3 py-2 bg-white dark:bg-slate-900/50 text-gray-800 dark:text-gray-100 outline-none transition-all ${errors.tema_principal
+                                        ? 'border-red-500 bg-red-50 dark:bg-red-900/20 ring-2 ring-red-200 dark:ring-red-900/50 text-red-900 dark:text-red-200'
+                                        : 'border-gray-200 dark:border-slate-700 focus:ring-2 focus:ring-blue-500'
+                                        }`}
+                                    placeholder="Buscar tema..."
+                                    autoComplete="off"
+                                />
+                                <Search className={`absolute left-3 top-2.5 ${errors.tema_principal ? 'text-red-400' : 'text-gray-400'}`} size={18} />
                             </div>
+                            {errors.tema_principal && <span className="text-red-500 text-xs mt-1 block">Debes seleccionar o escribir un tema</span>}
                             {mostrarSugerencias && sugerencias.length > 0 && (
                                 <div className="absolute z-50 w-full mt-1 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg shadow-xl max-h-60 overflow-y-auto custom-scrollbar">
                                     <ul>{sugerencias.map((plan, index) => (
@@ -793,252 +792,345 @@ export default function CrearCapacitacionPage() {
                                             onClick={() => seleccionarTema(plan)}
                                             className="px-4 py-3 hover:bg-blue-50 dark:hover:bg-slate-700/50 cursor-pointer border-b border-gray-100 dark:border-slate-700 last:border-none transition-colors group"
                                         >
-                                            {/* 1. Título del Tema (Arriba) */}
                                             <div className="text-sm font-bold text-gray-800 dark:text-gray-100 mb-1 group-hover:text-blue-700 dark:group-hover:text-blue-400 transition-colors">
                                                 {plan.tema}
                                             </div>
-
-                                            {/* 2. Clasificación (Texto pequeño gris) */}
-                                            <div className="text-xs text-gray-400 dark:text-gray-500 mb-2">
-                                                {plan.clasificacion}
+                                            <div className="flex flex-wrap gap-1.5 mt-2">
+                                                {plan.areas_objetivo && plan.areas_objetivo.split(',').map((areaStr: string, i: number) => (
+                                                    <span key={i} className="text-[10px] uppercase font-bold bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 px-2 py-0.5 rounded border border-blue-200 dark:border-blue-900/50">
+                                                        {areaStr.trim()}
+                                                    </span>
+                                                ))}
                                             </div>
-
-                                            {/* 3. Etiquetas de Área (Abajo, separadas en 'chips') */}
-                                            {plan.areas_objetivo && (
-                                                <div className="flex flex-wrap gap-1.5">
-                                                    {plan.areas_objetivo.split(',').map((area, i) => (
-                                                        <span
-                                                            key={i}
-                                                            className="text-[10px] uppercase font-bold bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 px-2 py-0.5 rounded border border-blue-200 dark:border-blue-900/50"
-                                                        >
-                                                            {area.trim()}
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            )}
                                         </li>
                                     ))}</ul>
                                 </div>
                             )}
                         </div>
-                        <div className="md:col-span-4"><label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">Actividad Económica</label><div className="w-full border border-gray-200 dark:border-slate-700 rounded px-3 py-2 bg-gray-100 dark:bg-slate-900/30 text-gray-500 dark:text-gray-400 text-xs font-medium">{empresaConfig?.actividad_economica}</div></div>
-                        <div className="md:col-span-3"><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Fecha *</label><input type="date" {...register("fecha", { required: true })} className="w-full border border-gray-200 dark:border-slate-700 rounded px-3 py-2 bg-white dark:bg-slate-900/50 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none" /></div>
-                        <div className="md:col-span-3"><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Inicio</label><input type="time" {...register("hora_inicio")} className="w-full border border-gray-200 dark:border-slate-700 rounded px-3 py-2 bg-white dark:bg-slate-900/50 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none" /></div>
-                        <div className="md:col-span-3"><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Término</label><input type="time" {...register("hora_termino")} className="w-full border border-gray-200 dark:border-slate-700 rounded px-3 py-2 bg-white dark:bg-slate-900/50 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none" /></div>
-                        <div className="md:col-span-3"><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Total Horas</label><input {...register("total_horas")} className="w-full border border-gray-200 dark:border-slate-700 rounded px-3 py-2 bg-gray-50 dark:bg-slate-900/30 dark:text-gray-100 outline-none" /></div>
-                        <div className="md:col-span-12"><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Objetivo</label><textarea {...register("objetivo")} rows={2} className="w-full border border-gray-200 dark:border-slate-700 rounded px-3 py-2 bg-white dark:bg-slate-900/50 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none" /></div>
-                        <div className="md:col-span-12"><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Temario</label><textarea {...register("temario")} rows={3} className="w-full border border-gray-200 dark:border-slate-700 rounded px-3 py-2 bg-white dark:bg-slate-900/50 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none" /></div>
+                        <div className="md:col-span-4">
+                            <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">Actividad Económica</label>
+                            <div className="w-full border border-gray-200 dark:border-slate-700 rounded px-3 py-2 bg-gray-100 dark:bg-slate-900/30 text-gray-500 dark:text-gray-400 text-xs font-medium">
+                                {empresaConfig?.actividad_economica}
+                            </div>
+                        </div>
+
+                        <div className="md:col-span-3">
+                            <label className={`block text-sm font-medium mb-1 ${errors.fecha ? 'text-red-600 font-bold' : 'text-gray-700 dark:text-gray-300'}`}>
+                                Fecha <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                                type="date"
+                                {...register("fecha", { required: true })}
+                                className={`w-full border rounded px-3 py-2 bg-white dark:bg-slate-900/50 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none transition-all ${errors.fecha ? 'border-red-500 bg-red-50 dark:bg-red-900/20' : 'border-gray-200 dark:border-slate-700'}`}
+                            />
+                            {errors.fecha && <span className="text-red-500 text-xs mt-1 block">Obligatorio</span>}
+                        </div>
+
+                        <div className="md:col-span-3">
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Inicio</label>
+                            <input type="time" {...register("hora_inicio")} className="w-full border border-gray-200 dark:border-slate-700 rounded px-3 py-2 bg-white dark:bg-slate-900/50 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none" />
+                        </div>
+                        <div className="md:col-span-3">
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Término</label>
+                            <input type="time" {...register("hora_termino")} className="w-full border border-gray-200 dark:border-slate-700 rounded px-3 py-2 bg-white dark:bg-slate-900/50 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none" />
+                        </div>
+                        <div className="md:col-span-3">
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Total Horas</label>
+                            <input {...register("total_horas")} className="w-full border border-gray-200 dark:border-slate-700 rounded px-3 py-2 bg-gray-50 dark:bg-slate-900/30 dark:text-gray-100 outline-none" />
+                        </div>
+                        <div className="md:col-span-12">
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Objetivo</label>
+                            <textarea {...register("objetivo")} rows={2} className="w-full border border-gray-200 dark:border-slate-700 rounded px-3 py-2 bg-white dark:bg-slate-900/50 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none" />
+                        </div>
+                        <div className="md:col-span-12">
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Temario</label>
+                            <textarea {...register("temario")} rows={3} className="w-full border border-gray-200 dark:border-slate-700 rounded px-3 py-2 bg-white dark:bg-slate-900/50 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none" />
+                        </div>
                     </div>
                 </div>
 
-                {/* 3. CLASIFICACIÓN */}
-                <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700">
-                    <div className="flex items-center gap-2 mb-4 border-b border-gray-200 dark:border-slate-700 pb-2 text-blue-700 dark:text-blue-400"><FileText size={20} /> <h3 className="font-bold">Clasificación</h3></div>
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 text-sm">
+                {/* SECTION 3: CLASIFICACIÓN */}
+                <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700">
+                    <div className="flex items-center gap-2 mb-6 text-blue-700 dark:text-blue-400 font-bold border-b border-gray-50 dark:border-slate-700 pb-3">
+                        <FileText size={20} /> <h3 className="uppercase tracking-widest text-sm">Clasificación de Actividad</h3>
+                    </div>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                         <div>
-                            <label className="block font-bold text-gray-700 dark:text-gray-300 mb-2">Actividad *</label>
-                            <div className={`grid grid-cols-2 gap-2 p-2 rounded transition-colors ${errors.actividad ? 'bg-red-50 dark:bg-red-900/10' : 'bg-gray-50 dark:bg-slate-900/30'}`}>
+                            <label className={`block text-[11px] font-bold uppercase mb-3 tracking-widest ${errors.actividad ? 'text-red-600' : 'text-gray-400 dark:text-slate-500'}`}>Tipo de Actividad</label>
+                            <div className={`grid grid-cols-2 sm:grid-cols-3 gap-2 p-4 rounded-2xl border-2 transition-all ${errors.actividad ? 'bg-red-50 dark:bg-red-950/20 border-red-500 ring-4 ring-red-500/10' : 'bg-gray-50 dark:bg-slate-900/50 border-transparent hover:border-gray-200 dark:hover:border-slate-700'}`}>
                                 {['Inducción', 'Capacitación', 'Entrenamiento', 'Taller', 'Charla', 'Simulacro', 'Otros'].map(op => (
-                                    <label key={op} className="flex items-center gap-2 cursor-pointer text-gray-600 dark:text-gray-400 hover:text-blue-600 transition-colors"><input type="radio" value={op} {...register("actividad", { required: true })} className="accent-blue-600" /> {op}</label>
+                                    <label key={op} className="flex items-center gap-2 cursor-pointer group">
+                                        <input type="radio" value={op} {...register("actividad", { required: true })} className="accent-blue-600 w-4 h-4" />
+                                        <span className="text-sm font-medium text-gray-600 dark:text-gray-400 group-hover:text-blue-600 dark:group-hover:text-blue-300 transition-colors">{op}</span>
+                                    </label>
                                 ))}
                             </div>
+                            {errors.actividad && <span className="text-red-500 text-[10px] font-black mt-2 block uppercase">Selección requerida</span>}
                         </div>
-                        <div>
-                            <label className="block font-bold text-gray-700 dark:text-gray-300 mb-2">Categoría *</label>
-                            <select {...register("categoria", { required: true })} className={`w-full border rounded px-2 py-1.5 bg-white dark:bg-slate-900/50 dark:text-gray-100 border-gray-200 dark:border-slate-700 focus:ring-2 focus:ring-blue-500 outline-none transition-all ${errors.categoria ? 'border-red-500' : ''}`}>
-                                <option value="">-- Seleccionar --</option>
-                                <option value="Seguridad">Seguridad</option>
-                                <option value="Inocuidad">Inocuidad</option>
-                                <option value="Cadena">Cadena Suministro</option>
-                                <option value="Medio Ambiente">Medio Ambiente</option>
-                                <option value="Responsabilidad Social">Resp. Social</option>
-                                <option value="Gobernanza">Gobernanza</option>
-                                <option value="Otros">Otros</option>
-                            </select>
-                        </div>
-                        <div className="flex gap-8">
-                            <div><label className="block font-bold text-gray-700 dark:text-gray-300 mb-2">Modalidad *</label><div className="flex gap-3 text-gray-600 dark:text-gray-400"><label className="flex items-center gap-1.5 cursor-pointer hover:text-blue-500"><input type="radio" value="Interna" {...register("modalidad", { required: true })} className="accent-blue-600" /> Interna</label><label className="flex items-center gap-1.5 cursor-pointer hover:text-blue-500"><input type="radio" value="Externa" {...register("modalidad", { required: true })} className="accent-blue-600" /> Externa</label></div></div>
-                            <div><label className="block font-bold text-gray-700 dark:text-gray-300 mb-2">Acción Correctiva *</label><div className="flex gap-3 text-gray-600 dark:text-gray-400"><label className="flex items-center gap-1.5 cursor-pointer hover:text-blue-500"><input type="radio" value="SI" {...register("accion_correctiva", { required: true })} className="accent-blue-600" /> SI</label><label className="flex items-center gap-1.5 cursor-pointer hover:text-blue-500"><input type="radio" value="NO" {...register("accion_correctiva", { required: true })} className="accent-blue-600" /> NO</label></div></div>
-                        </div>
-                        <div>
-                            <label className="block font-bold text-gray-700 dark:text-gray-300 mb-2">Centros / Lugar *</label>
-                            <div className={`flex flex-wrap gap-3 p-2 rounded transition-colors ${errors.centros ? 'bg-red-50 dark:bg-red-900/10' : 'bg-gray-50 dark:bg-slate-900/30'}`}>
-                                {['Planta Packing', 'Fundo', 'Campo', 'Auditorio', 'Otros'].map(c => (<label key={c} className="flex gap-1.5 items-center cursor-pointer text-gray-600 dark:text-gray-400 hover:text-blue-600 transition-colors"><input type="radio" value={c} {...register("centros", { required: true })} className="accent-blue-600" /> {c}</label>))}
+                        <div className="space-y-6">
+                            <div>
+                                <label className={`block text-[11px] font-bold uppercase mb-3 tracking-widest ${errors.categoria ? 'text-red-600' : 'text-gray-400 dark:text-slate-500'}`}>Categoría del Evento</label>
+                                <select
+                                    {...register("categoria", { required: true })}
+                                    className={`w-full border-2 rounded-2xl px-4 py-3 font-bold outline-none transition-all ${errors.categoria ? 'border-red-500 bg-red-50 dark:bg-red-950/20 ring-4 ring-red-500/10' : 'bg-gray-50 dark:bg-slate-900/50 border-transparent focus:border-blue-500 dark:text-white'}`}
+                                >
+                                    <option value="" className="dark:bg-slate-800">-- Seleccionar Categoría --</option>
+                                    <option value="Seguridad" className="dark:bg-slate-800">Seguridad y Salud</option>
+                                    <option value="Inocuidad" className="dark:bg-slate-800">Inocuidad Alimentaria</option>
+                                    <option value="Cadena" className="dark:bg-slate-800">Cadena de Suministro (BASC)</option>
+                                    <option value="Medio Ambiente" className="dark:bg-slate-800">Gestión Ambiental</option>
+                                    <option value="Responsabilidad Social" className="dark:bg-slate-800">Responsabilidad Social</option>
+                                    <option value="Gobernanza" className="dark:bg-slate-800">Gobernanza y Ética</option>
+                                    <option value="Otros" className="dark:bg-slate-800">Otros Temas</option>
+                                </select>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-[11px] font-bold text-gray-400 dark:text-slate-500 uppercase mb-3 tracking-widest">Modalidad</label>
+                                    <div className="flex bg-gray-50 dark:bg-slate-900/50 p-1 rounded-xl border border-transparent hover:border-gray-200 dark:hover:border-slate-700 transition-all">
+                                        <label className="flex-1 text-center py-2 rounded-lg cursor-pointer font-bold text-sm transition-all has-[:checked]:bg-blue-600 has-[:checked]:text-white text-gray-500">
+                                            <input type="radio" value="Interna" {...register("modalidad")} className="hidden" /> Interna
+                                        </label>
+                                        <label className="flex-1 text-center py-2 rounded-lg cursor-pointer font-bold text-sm transition-all has-[:checked]:bg-blue-600 has-[:checked]:text-white text-gray-500">
+                                            <input type="radio" value="Externa" {...register("modalidad")} className="hidden" /> Externa
+                                        </label>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-[11px] font-bold text-gray-400 dark:text-slate-500 uppercase mb-3 tracking-widest">A. Correctiva</label>
+                                    <div className="flex bg-gray-50 dark:bg-slate-900/50 p-1 rounded-xl border border-transparent hover:border-gray-200 dark:hover:border-slate-700 transition-all">
+                                        <label className="flex-1 text-center py-2 rounded-lg cursor-pointer font-bold text-sm transition-all has-[:checked]:bg-red-500 has-[:checked]:text-white text-gray-500">
+                                            <input type="radio" value="SI" {...register("accion_correctiva")} className="hidden" /> SI
+                                        </label>
+                                        <label className="flex-1 text-center py-2 rounded-lg cursor-pointer font-bold text-sm transition-all has-[:checked]:bg-green-600 has-[:checked]:text-white text-gray-500">
+                                            <input type="radio" value="NO" {...register("accion_correctiva")} className="hidden" /> NO
+                                        </label>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
-
-                {/* 4. EXPOSITOR */}
-                <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700">
-                    <div className="flex items-center gap-2 mb-4 border-b border-gray-200 dark:border-slate-700 pb-2 text-blue-700 dark:text-blue-400"><Briefcase size={20} /> <h3 className="font-bold">Expositor</h3></div>
-                    <div className="grid grid-cols-2 gap-4 mb-4">
-                        <input {...register("expositor_nombre")} placeholder="Nombre Completo" className="w-full border border-gray-200 dark:border-slate-700 rounded px-3 py-2 bg-white dark:bg-slate-900/50 dark:text-gray-100 outline-none focus:ring-2 focus:ring-blue-500 transition-all font-medium" />
-                        <input {...register("expositor_dni")} placeholder="DNI Expositor" className="w-full border border-gray-200 dark:border-slate-700 rounded px-3 py-2 bg-white dark:bg-slate-900/50 dark:text-gray-100 outline-none focus:ring-2 focus:ring-blue-500 transition-all font-medium" />
-                    </div>
-                    <input {...register("institucion_procedencia")} placeholder="Institución" className="w-full border border-gray-200 dark:border-slate-700 rounded px-3 py-2 bg-gray-50 dark:bg-slate-900/30 dark:text-gray-300 outline-none focus:ring-2 focus:ring-blue-500 transition-all font-medium mb-4" />
-                    <div className="border border-gray-200 dark:border-slate-700 rounded-lg p-3 bg-gray-50 dark:bg-slate-900/30">
-                        <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Firma del Expositor:</label>
-                        <div className="flex gap-2 mb-3">
-                            <button type="button" onClick={() => setModoFirma('subir')} className={`text-xs px-3 py-1.5 border rounded flex items-center gap-2 transition-all ${modoFirma === 'subir' ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-500/20' : 'bg-white dark:bg-slate-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-slate-700 hover:bg-gray-50'}`}>
-                                <ImageIcon size={14} /> Subir Imagen
-                            </button>
-                            <button type="button" onClick={() => setModoFirma('pantalla')} className={`text-xs px-3 py-1.5 border rounded flex items-center gap-2 transition-all ${modoFirma === 'pantalla' ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-500/20' : 'bg-white dark:bg-slate-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-slate-700 hover:bg-gray-50'}`}>
-                                <PenTool size={14} /> Firmar Pantalla
-                            </button>
+                    <div className="mt-8">
+                        <label className={`block text-[11px] font-bold uppercase mb-3 tracking-widest ${errors.centros ? 'text-red-600' : 'text-gray-400 dark:text-slate-500'}`}>Lugar / Centro de Capacitación</label>
+                        <div className={`flex flex-wrap gap-2 p-4 rounded-2xl border-2 transition-all ${errors.centros ? 'bg-red-50 dark:bg-red-950/20 border-red-500 ring-4 ring-red-500/10' : 'bg-gray-50 dark:bg-slate-900/50 border-transparent hover:border-gray-200 dark:hover:border-slate-700'}`}>
+                            {['Planta Packing', 'Fundo', 'Campo', 'Auditorio', 'Comedor', 'Sala de Reuniones', 'E-Learning', 'Otros'].map(c => (
+                                <label key={c} className={`px-4 py-2 rounded-xl border-2 font-bold text-xs transition-all cursor-pointer ${watch('centros') === c ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/30' : 'bg-white dark:bg-slate-800 border-gray-100 dark:border-slate-700 text-gray-500 hover:border-blue-500/50'}`}>
+                                    <input type="radio" value={c} {...register("centros", { required: true })} className="hidden" /> {c}
+                                </label>
+                            ))}
                         </div>
-                        {watch('expositor_firma') ? (
-                            <div className="flex items-center gap-2 text-green-600 dark:text-green-500 bg-white dark:bg-slate-800 px-3 py-2 rounded border border-green-200 dark:border-green-900/30 animate-in zoom-in"><CheckCircle2 size={18} /> Firma Cargada <button type="button" onClick={() => setValue('expositor_firma', '')} className="p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"><Trash2 size={16} className="text-red-500" /></button></div>
-                        ) : (
-                            modoFirma === 'subir' ?
-                                <label className="cursor-pointer flex items-center gap-2 bg-white dark:bg-slate-800 p-2 border border-dashed border-gray-300 dark:border-slate-600 rounded justify-center hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors group">
-                                    {uploadingExpositor ? <Loader2 className="animate-spin text-blue-500" size={20} /> : <UploadCloud size={20} className="text-gray-400 group-hover:text-blue-500 transition-colors" />} <span className="text-sm text-gray-500 dark:text-gray-400 group-hover:text-blue-600">Subir firma</span> <input type="file" className="hidden" onChange={handleUploadFirmaExpositor} />
-                                </label> : <div className="bg-white dark:bg-slate-100 rounded-lg p-1"><SignaturePad ref={signaturePadRef} /></div>
-                        )}
                     </div>
                 </div>
 
-                {/* 5. TABLA INTELIGENTE (PARTICIPANTES) */}
-                <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700 overflow-x-auto">
-                    <div className="flex gap-2 mb-6">
-                        {/* 🟢 BOTÓN AUTOCOMPLETAR */}
-                        {watch('area_objetivo') && (
-                            <button
-                                type="button"
-                                onClick={cargarTrabajadoresDeArea}
-                                className="flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 text-xs font-bold shadow-sm transition-all"
-                                title={`Cargar personal de: ${watch('area_objetivo')}`}
-                            >
-                                <UserCheck size={16} />
-                                <span className="hidden sm:inline">Autocompletar ({watch('area_objetivo')})</span>
-                            </button>
-                        )}
+                {/* SECTION 4: EXPOSITOR */}
+                <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700">
+                    <div className="flex items-center gap-2 mb-6 text-blue-700 dark:text-blue-400 font-bold border-b border-gray-50 dark:border-slate-700 pb-3">
+                        <Briefcase size={20} /> <h3 className="uppercase tracking-widest text-sm">Información del Expositor</h3>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-gray-400 uppercase ml-2">Nombre Completo</label>
+                            <input {...register("expositor_nombre")} placeholder="Ej: Juan Perez" className="w-full border-2 border-transparent bg-gray-50 dark:bg-slate-900/50 rounded-xl px-4 py-2.5 dark:text-white outline-none focus:border-blue-500 transition-all font-medium" />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-gray-400 uppercase ml-2">Documento DNI</label>
+                            <input {...register("expositor_dni")} placeholder="8 dígitos" className="w-full border-2 border-transparent bg-gray-50 dark:bg-slate-900/50 rounded-xl px-4 py-2.5 dark:text-white outline-none focus:border-blue-500 transition-all font-medium" />
+                        </div>
+                    </div>
+                    <div className="space-y-1 mb-6">
+                        <label className="text-[10px] font-bold text-gray-400 uppercase ml-2">Empresa / Institución</label>
+                        <input {...register("institucion_procedencia")} placeholder="Nombre de la empresa" className="w-full border-2 border-transparent bg-gray-50 dark:bg-slate-900/50 rounded-xl px-4 py-2.5 dark:text-white outline-none focus:border-blue-500 transition-all font-medium" />
+                    </div>
 
-                        {/* 🔴 BOTÓN LIMPIAR (Nuevo) */}
-                        {fields.length > 0 && (
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    if (confirm("¿Estás seguro de vaciar toda la lista?")) {
-                                        replace([{ numero: 1, dni: '', apellidos_nombres: '', area: '', cargo: '', genero: 'M', condicion: '' }]); // Reinicia a 1 fila vacía
-                                    }
-                                }}
-                                className="flex items-center gap-2 px-3 py-1.5 bg-red-100 text-red-600 border border-red-200 rounded-lg hover:bg-red-200 text-xs font-bold transition-all"
-                                title="Borrar toda la lista"
-                            >
-                                <Trash2 size={16} />
-                                <span className="hidden sm:inline">Limpiar</span>
-                            </button>
-                        )}
-                    </div>
-                    <div className="hidden md:grid grid-cols-12 gap-2 text-xs font-bold text-gray-400 dark:text-gray-500 mb-2 uppercase px-2">
-                        <div className="col-span-1 text-center">#</div>
-                        <div className="col-span-2">DNI</div>
-                        <div className="col-span-4">Nombres</div>
-                        <div className="col-span-2">Área</div>
-                        <div className="col-span-2">Cargo</div>
-                        <div className="col-span-1 text-center">Firma</div>
-                    </div>
-                    {fields.map((item, index) => {
-                        const { opcionesNombres, opcionesDNI, cargosDisponibles, areasDisponibles } = getOpcionesFila(index);
-                        return (
-                            <div key={item.id} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center bg-gray-50 dark:bg-slate-900/30 p-2 rounded border border-gray-100 dark:border-slate-800 text-sm mb-2 hover:bg-white dark:hover:bg-slate-900/50 transition-all">
-                                <div className="col-span-1 font-bold text-center text-gray-400 dark:text-gray-600">{index + 1}</div>
-                                <div className="col-span-2">
-                                    <Controller name={`participantes.${index}.dni`} control={control} render={({ field }) => (
-                                        <Select
-                                            {...field}
-                                            options={opcionesDNI}
-                                            placeholder="DNI..."
-                                            onChange={(val: SelectOption | null) => {
-                                                field.onChange(val?.value);
-                                                if (val?.datos) autocompletarFila(index, val.datos);
-                                            }}
-                                            value={opcionesDNI.find(op => op.value === field.value)}
-                                            noOptionsMessage={() => "No encontrado"}
-                                            styles={customStyles}
-                                        />
-                                    )} />
-                                </div>
-                                <div className="col-span-4">
-                                    <Controller name={`participantes.${index}.apellidos_nombres`} control={control} render={({ field }) => (
-                                        <Select
-                                            {...field}
-                                            options={opcionesNombres}
-                                            placeholder="Nombre..."
-                                            onChange={(val: SelectOption | null) => {
-                                                field.onChange(val?.label);
-                                                if (val?.datos) autocompletarFila(index, val.datos);
-                                            }}
-                                            value={opcionesNombres.find(op => op.label === field.value)}
-                                            styles={customStyles}
-                                        />
-                                    )} />
-                                </div>
-                                <div className="col-span-2">
-                                    <Controller name={`participantes.${index}.area`} control={control} render={({ field }) => (
-                                        <Select
-                                            {...field}
-                                            options={areasDisponibles}
-                                            placeholder="Área"
-                                            onChange={(val: SelectOption | null) => {
-                                                field.onChange(val?.label);
-                                                setValue(`participantes.${index}.cargo`, '');
-                                            }}
-                                            value={areasDisponibles.find(a => a.value === field.value)}
-                                            styles={customStyles}
-                                        />
-                                    )} />
-                                </div>
-                                <div className="col-span-2">
-                                    <Controller name={`participantes.${index}.cargo`} control={control} render={({ field }) => (
-                                        <Select
-                                            {...field}
-                                            options={cargosDisponibles}
-                                            placeholder="Cargo"
-                                            isDisabled={!watch(`participantes.${index}.area`)}
-                                            onChange={(val: SelectOption | null) => field.onChange(val?.value)}
-                                            value={cargosDisponibles.find(op => op.value === field.value)}
-                                            styles={customStyles}
-                                        />
-                                    )} />
-                                </div>
-                                <div className="col-span-1 flex justify-center gap-2">
-                                    {watch(`participantes.${index}.firma_url`) ? <CheckCircle2 className="text-green-600 dark:text-green-500 animate-in zoom-in" size={20} /> : (
-                                        <>
-                                            <label className={`cursor-pointer p-1.5 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors ${uploadingRow === index ? 'animate-spin' : ''}`} title="Subir foto de firma"><input type="file" className="hidden" onChange={(e) => handleUploadFirma(index, e)} /><UploadCloud size={18} className="text-blue-500" /></label>
-                                            <button type="button" className="p-1.5 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-lg transition-colors" title="Firmar en pantalla" onClick={() => abrirModalFirma(index)}><PenTool size={18} className="text-purple-500" /></button>
-                                        </>
-                                    )}
-                                    <button type="button" className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors" title="Eliminar fila" onClick={() => remove(index)}><Trash2 size={18} className="text-red-500" /></button>
-                                </div>
+                    <div className="bg-gray-50 dark:bg-slate-950/50 rounded-2xl p-4 border border-gray-100 dark:border-slate-800">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                            <label className="text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-tight">Firma del Expositor</label>
+                            <div className="flex bg-white dark:bg-slate-900 p-1 rounded-xl shadow-sm border dark:border-slate-700">
+                                <button type="button" onClick={() => setModoFirma('subir')} className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-[11px] font-bold transition-all ${modoFirma === 'subir' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-slate-800'}`}>
+                                    <ImageIcon size={14} /> SUBIR IMAGEN
+                                </button>
+                                <button type="button" onClick={() => setModoFirma('pantalla')} className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-[11px] font-bold transition-all ${modoFirma === 'pantalla' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-slate-800'}`}>
+                                    <PenTool size={14} /> DIBUJAR FIRMA
+                                </button>
                             </div>
-                        );
-                    })}
-                    <div className="mt-4 flex justify-center"><button type="button" onClick={() => append({ numero: 0, dni: '', apellidos_nombres: '', area: '', cargo: '', genero: 'M', condicion: '' })} className="flex items-center gap-2 px-4 py-2 border-2 border-dashed border-gray-300 dark:border-slate-700 text-blue-600 dark:text-blue-400 rounded-xl hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:border-blue-500 dark:hover:border-blue-400 transition-all font-bold"><UserPlus size={18} /> Agregar Fila</button></div>
+                        </div>
+
+                        <div className="min-h-[140px] flex items-center justify-center border-2 border-dashed border-gray-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900/30 overflow-hidden">
+                            {watch('expositor_firma') ? (
+                                <div className="flex flex-col items-center gap-2 animate-in fade-in zoom-in duration-300">
+                                    <div className="bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 p-3 rounded-full shadow-inner"><CheckCircle2 size={32} /></div>
+                                    <span className="text-xs font-black text-green-600 dark:text-green-500 uppercase tracking-widest">Firma Registrada</span>
+                                    <button type="button" onClick={() => setValue('expositor_firma', '')} className="text-[10px] font-bold text-red-500 hover:underline uppercase mt-2">Eliminar y volver a firmar</button>
+                                </div>
+                            ) : (
+                                modoFirma === 'subir' ? (
+                                    <label className="w-full h-full cursor-pointer flex flex-col items-center justify-center p-8 group transition-all">
+                                        <div className="bg-blue-50 dark:bg-blue-900/20 text-blue-500 p-4 rounded-2xl group-hover:scale-110 transition-transform mb-3">
+                                            {uploadingExpositor ? <Loader2 className="animate-spin" size={24} /> : <UploadCloud size={24} />}
+                                        </div>
+                                        <span className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest">Click para cargar imagen</span>
+                                        <input type="file" className="hidden" onChange={handleUploadFirmaExpositor} accept="image/*" />
+                                    </label>
+                                ) : (
+                                    <div className="w-full bg-white dark:bg-white/10 p-2">
+                                        <SignaturePad ref={signaturePadRef} />
+                                    </div>
+                                )
+                            )}
+                        </div>
+                    </div>
                 </div>
 
-                {/* 6. FOTOS */}
-                <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700">
-                    <div className="flex items-center gap-2 mb-4 border-b border-gray-200 dark:border-slate-700 pb-2 text-blue-700 dark:text-blue-400"><Camera size={20} /><h3 className="font-bold">Evidencias</h3></div>
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                        <div className="relative border-2 border-dashed border-gray-300 dark:border-slate-700 rounded-xl p-6 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 hover:border-blue-400 transition-all h-40 group">
-                            <input type="file" multiple accept="image/*" onChange={handleFileChange} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-                            <Camera className="text-gray-400 dark:text-gray-500 group-hover:text-blue-500 transition-colors mb-2" size={32} /> <span className="text-sm font-bold text-gray-500 dark:text-gray-400 group-hover:text-blue-600">Agregar Fotos</span>
+                {/* SECTION 5: TABLA DE PARTICIPANTES */}
+                <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700" >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 border-b border-gray-50 dark:border-slate-700 pb-4">
+                        <div className="flex items-center gap-2 text-blue-700 dark:text-blue-400 font-bold">
+                            <Users size={20} /> <h3 className="uppercase tracking-widest text-sm">Listado de Asistencia</h3>
                         </div>
+                        <div className="flex flex-wrap gap-2">
+                            {watch('area_objetivo') && (
+                                <button type="button" onClick={cargarTrabajadoresDeArea} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-xl hover:bg-green-700 text-xs font-bold transition-all shadow-lg shadow-green-600/20 active:scale-95">
+                                    <UserCheck size={16} /> AUTOCOMPLETAR ({watch('area_objetivo')})
+                                </button>
+                            )}
+                            <button type="button" onClick={() => replace([{ numero: 1, dni: '', apellidos_nombres: '', area: '', cargo: '', genero: 'M', condicion: '' }])} className="flex items-center gap-2 px-4 py-2 bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 border border-red-100 dark:border-red-900/30 rounded-xl hover:bg-red-100 transition-all text-xs font-bold">
+                                <Trash2 size={16} /> LIMPIAR LISTA
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="overflow-x-auto -mx-6 px-6">
+                        <div className="min-w-[800px]">
+                            <div className="grid grid-cols-12 gap-3 text-[10px] font-black text-gray-400 dark:text-slate-500 mb-3 uppercase tracking-widest px-4">
+                                <div className="col-span-1 text-center font-black">#</div>
+                                <div className="col-span-2">DNI / ID</div>
+                                <div className="col-span-4">Nombres y Apellidos</div>
+                                <div className="col-span-2">Área</div>
+                                <div className="col-span-2">Cargo</div>
+                                <div className="col-span-1 text-center">Firma</div>
+                            </div>
+
+                            <div className="space-y-2">
+                                {fields.map((item, index) => {
+                                    const { opcionesNombres, opcionesDNI, cargosDisponibles, areasDisponibles } = getOpcionesFila(index);
+                                    return (
+                                        <div key={item.id} className="grid grid-cols-12 gap-3 items-center bg-gray-50/50 dark:bg-slate-900/40 p-2 rounded-2xl border border-gray-100 dark:border-slate-800 hover:bg-white dark:hover:bg-slate-900 transition-all group">
+                                            <div className="col-span-1 font-black text-center text-gray-300 dark:text-slate-700">{index + 1}</div>
+                                            <div className="col-span-2">
+                                                <Controller name={`participantes.${index}.dni`} control={control} render={({ field }) => (
+                                                    <Select
+                                                        {...field}
+                                                        options={opcionesDNI}
+                                                        placeholder="DNI..."
+                                                        onChange={(val: SelectOption | null) => {
+                                                            field.onChange(val?.value);
+                                                            if (val?.datos) autocompletarFila(index, val.datos);
+                                                        }}
+                                                        value={opcionesDNI.find(op => op.value === field.value)}
+                                                        styles={customStyles}
+                                                    />
+                                                )} />
+                                            </div>
+                                            <div className="col-span-4">
+                                                <Controller name={`participantes.${index}.apellidos_nombres`} control={control} render={({ field }) => (
+                                                    <Select
+                                                        {...field}
+                                                        options={opcionesNombres}
+                                                        placeholder="Buscar por nombre..."
+                                                        onChange={(val: SelectOption | null) => {
+                                                            field.onChange(val?.label);
+                                                            if (val?.datos) autocompletarFila(index, val.datos);
+                                                        }}
+                                                        value={opcionesNombres.find(op => op.label === field.value)}
+                                                        styles={customStyles}
+                                                    />
+                                                )} />
+                                            </div>
+                                            <div className="col-span-2">
+                                                <Controller name={`participantes.${index}.area`} control={control} render={({ field }) => (
+                                                    <Select
+                                                        {...field}
+                                                        options={areasDisponibles}
+                                                        placeholder="Área"
+                                                        value={areasDisponibles.find(a => a.value === field.value)}
+                                                        styles={customStyles}
+                                                    />
+                                                )} />
+                                            </div>
+                                            <div className="col-span-2">
+                                                <Controller name={`participantes.${index}.cargo`} control={control} render={({ field }) => (
+                                                    <Select
+                                                        {...field}
+                                                        options={cargosDisponibles}
+                                                        placeholder="Cargo"
+                                                        value={cargosDisponibles.find(op => op.value === field.value)}
+                                                        styles={customStyles}
+                                                    />
+                                                )} />
+                                            </div>
+                                            <div className="col-span-1 flex justify-center gap-1.5 opacity-60 group-hover:opacity-100 transition-opacity">
+                                                {watch(`participantes.${index}.firma_url`) ? (
+                                                    <div className="p-1.5 bg-green-100 dark:bg-green-900/30 text-green-600 rounded-lg"><CheckCircle2 size={18} /></div>
+                                                ) : (
+                                                    <>
+                                                        <label className="cursor-pointer p-1.5 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-lg hover:text-blue-600 transition-colors">
+                                                            <input type="file" className="hidden" onChange={(e) => handleUploadFirma(index, e)} />
+                                                            <UploadCloud size={18} />
+                                                        </label>
+                                                        <button type="button" onClick={() => abrirModalFirma(index)} className="p-1.5 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-lg hover:text-purple-600 transition-colors">
+                                                            <PenTool size={18} />
+                                                        </button>
+                                                    </>
+                                                )}
+                                                <button type="button" onClick={() => remove(index)} className="p-1.5 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-lg hover:text-red-500 transition-colors">
+                                                    <X size={18} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            <button type="button" onClick={() => append({ numero: 0, dni: '', apellidos_nombres: '', area: '', cargo: '', genero: 'M', condicion: '' })} className="mt-4 w-full py-4 border-2 border-dashed border-gray-200 dark:border-slate-800 rounded-2xl flex items-center justify-center gap-2 text-gray-400 dark:text-slate-600 hover:border-blue-500 hover:text-blue-600 dark:hover:text-blue-400 transition-all font-bold uppercase text-[10px] tracking-[0.2em]">
+                                <UserPlus size={18} /> AGREGAR NUEVO PARTICIPANTE
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* SECTION 6: EVIDENCIAS FOTOGRÁFICAS */}
+                <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700">
+                    <div className="flex items-center gap-2 mb-6 text-blue-700 dark:text-blue-400 font-bold border-b border-gray-50 dark:border-slate-700 pb-3">
+                        <Camera size={20} /> <h3 className="uppercase tracking-widest text-sm">Evidencias Fotográficas</h3>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                        <label className="aspect-square relative border-2 border-dashed border-gray-200 dark:border-slate-800 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-900/50 hover:border-blue-500 transition-all group">
+                            <input type="file" multiple accept="image/*" onChange={handleFileChange} className="hidden" />
+                            <div className="bg-blue-50 dark:bg-blue-900/20 text-blue-500 p-3 rounded-xl group-hover:scale-110 transition-transform mb-2"><Camera size={24} /></div>
+                            <span className="text-[10px] font-black uppercase text-gray-400 tracking-tighter">Añadir Fotos</span>
+                        </label>
                         {evidencias.map((f, i) => (
-                            <div key={i} className="relative h-40 border border-gray-200 dark:border-slate-700 rounded-xl overflow-hidden shadow-sm group animate-in zoom-in"><Image src={URL.createObjectURL(f)} alt="Preview" fill className="object-cover" unoptimized /> <button type="button" onClick={() => removeEvidencia(i)} className="absolute top-2 right-2 bg-red-500 text-white p-1.5 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"><X size={14} /></button></div>
+                            <div key={i} className="aspect-square relative rounded-2xl overflow-hidden border border-gray-100 dark:border-slate-800 group animate-in zoom-in-95 duration-300 shadow-sm">
+                                <Image src={URL.createObjectURL(f)} alt="Evidencia" fill className="object-cover group-hover:scale-105 transition-transform duration-500" unoptimized />
+                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                    <button type="button" onClick={() => removeEvidencia(i)} className="bg-red-500 text-white p-2 rounded-full shadow-lg hover:scale-110 transition-transform">
+                                        <Trash2 size={16} />
+                                    </button>
+                                </div>
+                            </div>
                         ))}
                     </div>
                 </div>
 
-                <div className="flex justify-end gap-4 pt-6 border-t border-gray-200 dark:border-slate-700">
-                    <button type="button" onClick={() => router.back()} className="px-6 py-2.5 border border-gray-200 dark:border-slate-700 rounded-xl text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-800 transition-all font-bold">Cancelar</button>
-                    <button type="submit" disabled={loading} className="flex items-center gap-2 px-10 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-xl shadow-blue-500/20 transition-all active:scale-95 disabled:opacity-50 disabled:scale-100">
-                        {loading ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />} {loading ? 'Guardando...' : 'Guardar Acta'}
+                {/* BOTONES DE ACCIÓN FINAL */}
+                <div className="flex flex-col sm:flex-row justify-end gap-3 pt-8 mt-4 border-t border-gray-100 dark:border-slate-800">
+                    <button type="button" onClick={() => router.back()} className="px-8 py-3.5 border-2 border-gray-100 dark:border-slate-800 rounded-2xl text-gray-500 dark:text-slate-500 hover:bg-gray-50 dark:hover:bg-slate-900 transition-all font-bold uppercase tracking-widest text-xs">CANCELAR</button>
+                    <button type="submit" disabled={loading} className="px-12 py-3.5 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-2xl font-black shadow-2xl transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-3 group tracking-widest text-xs uppercase">
+                        {loading ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} className="group-hover:rotate-12 transition-transform" />}
+                        {loading ? 'Guardando Registro...' : 'REGISTRAR ACTA'}
                     </button>
                 </div>
-            </form >
-        </div >
+            </form>
+        </div>
     );
 }

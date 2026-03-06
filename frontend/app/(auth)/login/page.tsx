@@ -1,13 +1,13 @@
-// frontend/app/(auth)/login/page.tsx
 'use client';
 
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link'; // 🟢 1. Importamos Link
 import { useAuth } from '@/context/AuthContext';
 import { Eye, EyeOff, Lock, User, AlertCircle, CheckCircle2, X, ArrowLeft, ShieldCheck } from 'lucide-react';
 import api from '@/services/api';
-import { AxiosError } from 'axios'; // 🟢 1. Importamos AxiosError para tipado estricto
+import { AxiosError } from 'axios';
 
 type LoginFormInputs = {
   usuario: string;
@@ -80,7 +80,6 @@ export default function LoginPage() {
 
   return (
     <AnimatedLoginBackground>
-
 
       <div className="w-full max-w-md relative z-20">
 
@@ -189,7 +188,7 @@ export default function LoginPage() {
 
       </div>
 
-      {/* MODAL DE RECUPERACIÓN */}
+      {/* MODAL DE RECUPERACIÓN (Se mantiene igual) */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
           <div className="w-full max-w-sm bg-white rounded-xl shadow-2xl overflow-hidden scale-100 animate-in zoom-in-95">

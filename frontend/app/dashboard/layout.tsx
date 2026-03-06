@@ -2,15 +2,16 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import Image from 'next/image';
-import Sidebar from '@/components/Sidebar'; // <--- Importamos el componente
+import Sidebar from '@/components/Sidebar';
 import { Menu, X, Moon, Sun, BellRing, Loader2 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useAuth } from '@/context/AuthContext';
 import { useAlertas } from '@/context/AlertasContext';
-import { usePathname } from 'next/navigation';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+    const router = useRouter();
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const { theme, setTheme } = useTheme();
     const [mounted, setMounted] = useState(false);
@@ -23,11 +24,43 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         setMounted(true);
     }, []);
 
+    // 🟢 1. Estado de autorización (Empieza en falso para no mostrar nada aún)
+    const [authorized, setAuthorized] = useState(false);
+
+    // 🟢 2. El "Guardia de Seguridad"
+    useEffect(() => {
+        const token = localStorage.getItem('token');
+
+        if (!token) {
+            router.push('/login');
+        } else {
+            // Verificamos si ya está autorizado para evitar re-renders innecesarios
+            if (!authorized) {
+                setAuthorized(true);
+            }
+        }
+
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // 👈 Usamos [] para que solo verifique AL ENTRAR (Montar), no a cada rato.
+
+    // 🟢 3. Pantalla de Carga (mientras verifica)
+    // Esto evita que el dashboard "parpadee" antes de redirigir si no está logueado
+    if (!authorized) {
+        return (
+            <div className="flex h-screen items-center justify-center bg-gray-50">
+                <div className="flex flex-col items-center gap-3">
+                    <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                    <span className="text-sm font-medium text-gray-500 animate-pulse">Verificando credenciales...</span>
+                </div>
+            </div>
+        );
+    }
+
+    // 🟢 4. Si pasó la seguridad, renderizamos TU DISEÑO ORIGINAL
     return (
         <div className="flex min-h-screen bg-gray-100 dark:bg-gray-900 transition-colors duration-300">
 
             {/* --- COMPONENTE SIDEBAR --- */}
-            {/* Le pasamos el estado y la función para cerrar */}
             <Sidebar
                 isOpen={sidebarOpen}
                 onClose={() => setSidebarOpen(false)}
@@ -39,8 +72,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 {/* --- HEADER SUPERIOR (NAVBAR) --- */}
                 <header className="flex h-16 items-center justify-between bg-white/80 dark:bg-gray-900/80 backdrop-blur-md px-5 border-b border-gray-100/50 dark:border-gray-800 shadow-sm shrink-0 z-40 sticky top-0 transition-all duration-300">
                     <div className="flex items-center gap-4">
-
-
                         {/* Logo Móvil */}
                         <div className="md:hidden relative w-24 h-8 overflow-hidden rounded-md border border-gray-100/50 dark:border-gray-800 shadow-sm">
                             <Image
@@ -98,7 +129,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 {/* Área de Trabajo (Scrollable) */}
                 <main className="flex-1 overflow-y-auto bg-gray-50 dark:bg-slate-900 p-4 md:p-8 scroll-smooth flex flex-col transition-colors duration-300">
 
-                    {/* Aquí se renderizan las páginas (Reportes, Crear, Trabajadores, etc) */}
+                    {/* Contenido de las páginas */}
                     <div className="flex-1">
                         {children}
                     </div>

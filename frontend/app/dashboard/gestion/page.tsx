@@ -12,6 +12,8 @@ import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell
 } from 'recharts';
 import { AxiosError } from 'axios';
+// 🟢 1. IMPORTAR USEAUTH
+import { useAuth } from '@/context/AuthContext';
 
 // --- INTERFACES ---
 interface Worker {
@@ -46,6 +48,10 @@ interface ChartData {
 
 export default function GestionPage() {
     const router = useRouter();
+    // 🟢 2. OBTENER EL USUARIO PARA SABER SI ES AUDITOR
+    const { user } = useAuth();
+    const esAuditor = user?.rol === 'Auditor' || user?.rol === 'auditor';
+
     const [stats, setStats] = useState<AvanceReporte[]>([]);
     const [loading, setLoading] = useState(true);
     const { theme } = useTheme();
@@ -198,9 +204,7 @@ export default function GestionPage() {
     if (loading) return <div className="p-10 text-center">Cargando Gestión...</div>;
 
     return (
-        <div className="max-w-7xl mx-auto pb-20 space-y-6">
-
-            {/* ENCABEZADO */}
+        <div className="max-w-6xl mx-auto space-y-6 pb-20">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div className="flex items-center gap-4">
                     <button onClick={() => router.back()} className="p-2 hover:bg-gray-200 dark:hover:bg-slate-800 rounded-full transition">
@@ -211,27 +215,38 @@ export default function GestionPage() {
                         <p className="text-sm text-gray-500 dark:text-gray-400">Plan Anual vs. Ejecución Real</p>
                     </div>
                 </div>
-                <button
-                    onClick={() => setShowUpload(!showUpload)}
-                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm transition"
-                >
-                    <FileSpreadsheet size={16} />
-                    {showUpload ? 'Ocultar' : 'Importar Plan'}
-                </button>
+
+                {/* 🟢 3. OCULTAMOS EL BOTÓN SI ES AUDITOR */}
+                {!esAuditor && (
+                    <button
+                        onClick={() => setShowUpload(!showUpload)}
+                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm transition"
+                    >
+                        <FileSpreadsheet size={16} />
+                        {showUpload ? 'Ocultar' : 'Importar Plan'}
+                    </button>
+                )}
             </div>
 
             {/* ZONA DE CARGA */}
-            {showUpload && (
+            {!esAuditor && showUpload && (
                 <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6 animate-fadeIn">
-                    <form onSubmit={handleUpload} className="flex gap-4 items-center">
-                        <input
-                            type="file"
-                            accept=".xlsx, .xls"
-                            onChange={(e) => setFile(e.target.files?.[0] || null)}
-                            className="block w-full text-sm text-blue-900 dark:text-blue-100 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-100 dark:file:bg-blue-800 file:text-blue-700 dark:file:text-blue-200 hover:file:bg-blue-200 dark:hover:file:bg-blue-700"
-                        />
-                        <button type="submit" disabled={!file || uploading} className="px-6 py-2 bg-green-600 text-white rounded-lg font-bold shadow hover:bg-green-700">
-                            {uploading ? '...' : 'Procesar'}
+                    <form onSubmit={handleUpload} className="flex flex-col md:flex-row gap-4 items-center">
+                        <div className="flex-1 w-full">
+                            <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Archivo Excel (Plan de Capacitaciones)</label>
+                            <input
+                                type="file"
+                                accept=".xlsx, .xls"
+                                onChange={(e) => setFile(e.target.files?.[0] || null)}
+                                className="block w-full text-sm text-blue-900 dark:text-blue-100 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-100 dark:file:bg-blue-800 file:text-blue-700 dark:file:text-blue-200 hover:file:bg-blue-200 dark:hover:file:bg-blue-700"
+                            />
+                        </div>
+                        <button
+                            type="submit"
+                            disabled={!file || uploading}
+                            className="w-full md:w-auto px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-bold shadow-sm disabled:opacity-50 mt-4 md:mt-6 flex items-center justify-center gap-2"
+                        >
+                            {uploading ? 'Procesando...' : 'Cargar Datos'}
                         </button>
                     </form>
                 </div>
