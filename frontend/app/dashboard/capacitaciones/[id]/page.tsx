@@ -22,17 +22,14 @@ import EvaluacionesTab from '@/components/EvaluacionesTab';
 const getImageUrl = (url: string | null | undefined) => {
     if (!url || typeof url !== 'string' || url.includes('[object Object]')) return "";
 
-    // Si es Cloudinary (empieza con http), devolver tal cual
     if (url.startsWith("http")) return url;
 
-    // Si es local, construir la ruta usando la URL base del API
     const baseUrl = process.env.NEXT_PUBLIC_API_URL?.split('/api')[0] || 'http://localhost:4000';
     const cleanPath = url.startsWith("/") ? url : `/${url}`;
 
     return `${baseUrl}${cleanPath}`;
 };
 
-// --- UTILIDADES ---
 const normalizar = (texto: string | undefined | null) => {
     return (texto || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
 };
@@ -43,7 +40,6 @@ const getColorBarra = (porcentaje: number) => {
     return 'bg-green-500';
 };
 
-// --- INTERFACES ---
 interface PlanItem {
     tema: string;
     clasificacion: string;
@@ -80,8 +76,6 @@ interface DocumentoExistente {
     fecha_generado?: string;
 }
 
-
-
 interface TrabajadorSelect {
     dni: string;
     nombres: string;
@@ -89,7 +83,7 @@ interface TrabajadorSelect {
     area: string;
     cargo: string;
     genero: string;
-    categoria?: string; // 🟢 Agregado
+    categoria?: string;
     firma_url?: string;
 }
 
@@ -99,7 +93,6 @@ interface SelectOption {
     datos?: TrabajadorSelect;
 }
 
-// 🟢 INTERFAZ DE EVALUACIÓN (Para el estado)
 interface EvaluacionData {
     id_evaluacion: number;
     titulo: string;
@@ -153,11 +146,10 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
 
     const esAuditor = user?.rol === 'auditor';
 
-    // 🟢 ESTADOS CORREGIDOS (Nombres distintos)
-    // 1. Pestaña Principal (Detalle vs Evaluaciones)
-    const [mainTab, setMainTab] = useState<'detalle' | 'evaluaciones'>('detalle');
+    // 🟢 ESTADO PARA ALERTAS FLOTANTES
+    const [mensajeAlerta, setMensajeAlerta] = useState<{ tipo: 'error' | 'exito', texto: string } | null>(null);
 
-    // 2. Pestaña de Lista (Asistentes vs Faltantes) - SOLO DENTRO DE DETALLE
+    const [mainTab, setMainTab] = useState<'detalle' | 'evaluaciones'>('detalle');
     const [listTab, setListTab] = useState<'asistentes' | 'faltantes'>('asistentes');
 
     const [faltantes, setFaltantes] = useState<TrabajadorFaltante[]>([]);
@@ -166,7 +158,6 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
     const [uploadingExpositor, setUploadingExpositor] = useState(false);
     const [evaluaciones, setEvaluaciones] = useState<EvaluacionData[]>([]);
 
-    // AUTOCOMPLETE TEMA
     const [planes, setPlanes] = useState<PlanItem[]>([]);
     const [sugerencias, setSugerencias] = useState<PlanItem[]>([]);
     const [mostrarSugerencias, setMostrarSugerencias] = useState(false);
@@ -179,11 +170,11 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
     const [empresaConfig, setEmpresaConfig] = useState<EmpresaConfig | null>(null);
     const [listaTrabajadores, setListaTrabajadores] = useState<TrabajadorSelect[]>([]);
 
-    const { register, control, handleSubmit, setValue, watch, reset, formState: { errors } } = useForm<Inputs>();
+    // 🟢 EXTRAEMOS setError y setFocus para validaciones
+    const { register, control, handleSubmit, setValue, watch, reset, setError, setFocus, formState: { errors } } = useForm<Inputs>();
     const { fields, append, remove, replace } = useFieldArray({ control, name: "participantes" });
     const participantesWatch = watch('participantes');
 
-    // --- CARGA DE DATOS ---
     useEffect(() => {
         const loadData = async () => {
             if (authLoading) return;
@@ -215,7 +206,7 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
                     hora_inicio: horaInicioFormat,
                     hora_termino: horaTerminoFormat,
                     participantes: data.participantes || [],
-                    area_objetivo: data.area_objetivo || '' // 🟢 IMPORTANTE: Cargar el área objetivo
+                    area_objetivo: data.area_objetivo || ''
                 });
                 if (data.evaluaciones) setEvaluaciones(data.evaluaciones);
             } catch (error) {
@@ -237,34 +228,6 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
     }, [id, authLoading, user, router, reset]);
 
     useEffect(() => {
-        const cargarDatos = async () => {
-            try {
-                const res = await api.get(`/capacitaciones/${id}`);
-                const data = res.data;
-
-                // 🟢 Paso A: Llenar el formulario con los nombres del Schema
-                reset({
-                    ...data,
-                    institucion_procedencia: data.institucion_procedencia,
-                    expositor_firma: data.expositor_firma || '',
-                });
-
-                // 🟢 Paso B: Llenar las evidencias (documentos)
-                if (data.documentos) {
-                    const evidencias = data.documentos.filter(
-                        (doc: DocumentoExistente) => doc.tipo === "EVIDENCIA_FOTO"
-                    );
-                    setFotosExistentes(evidencias);
-                }
-            } catch (error) {
-                console.error("Error al cargar:", error);
-            }
-        };
-        cargarDatos();
-    }, [id, reset]);
-
-    // --- CÁLCULO DE GÉNERO ---
-    useEffect(() => {
         if (!participantesWatch) return;
         let hombres = 0;
         let mujeres = 0;
@@ -280,7 +243,6 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
         setValue('total_trabajadores', hombres + mujeres);
     }, [participantesWatch, setValue]);
 
-    // --- CÁLCULO DE ESTADÍSTICAS VISUALES ---
     const statsPorArea = useMemo(() => {
         const map: Record<string, { total: number; asistentes: number }> = {};
         if (participantesWatch) {
@@ -308,8 +270,6 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
     const asistentesGlobal = statsPorArea.reduce((acc, curr) => acc + curr.asistentes, 0);
     const porcentajeGlobal = totalGlobal > 0 ? Math.round((asistentesGlobal / totalGlobal) * 100) : 0;
 
-
-    // --- FUNCIONES AUXILIARES ---
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files) {
             const files = Array.from(e.target.files);
@@ -322,13 +282,10 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
         try { setFotosExistentes(prev => prev.filter(f => f.id_documento !== id_doc)); } catch (e) { console.error(e); }
     };
 
-    // --- AUTOCOMPLETE TEMA ---
     const temaRegister = register("tema_principal", { required: true });
     const handleTemaSearch = (texto: string) => {
         if (texto.length > 1) {
-            const coincidencias = planes.filter(p =>
-                p.tema.toLowerCase().includes(texto.toLowerCase())
-            );
+            const coincidencias = planes.filter(p => p.tema.toLowerCase().includes(texto.toLowerCase()));
             setSugerencias(coincidencias);
             setMostrarSugerencias(true);
         } else {
@@ -337,8 +294,7 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
     };
 
     const seleccionarTema = (plan: PlanItem) => {
-        // 1. Asignar Nombre y Actividad
-        setValue('tema_principal', (plan.tema || '').trim());
+        setValue('tema_principal', (plan.tema || '').trim(), { shouldValidate: true });
 
         const tipoActividad = (plan.clasificacion || '').toLowerCase();
         let actividadFinal = 'Capacitación';
@@ -347,43 +303,25 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
         else if (tipoActividad.includes('charla')) actividadFinal = 'Charla';
         else if (tipoActividad.includes('simulacro')) actividadFinal = 'Simulacro';
         else if (tipoActividad.includes('entrenamiento')) actividadFinal = 'Entrenamiento';
-        setValue('actividad', actividadFinal);
+        setValue('actividad', actividadFinal, { shouldValidate: true });
 
-        // 3. 🟢 ASIGNAR CATEGORÍA (Desde la columna 'categoria' del Excel/BD)
         let categoriaFinal = 'Otros';
-
-        // Usamos plan.categoria en vez de plan.eje
         if (plan.categoria) {
             const catNormalizada = normalizar(plan.categoria);
-
-            if (catNormalizada.includes('social')) {
-                categoriaFinal = 'Responsabilidad Social';
-            } else if (catNormalizada.includes('ambiente')) {
-                categoriaFinal = 'Medio Ambiente';
-            } else if (catNormalizada.includes('inocuidad')) {
-                categoriaFinal = 'Inocuidad';
-            } else if (catNormalizada.includes('seguridad') || catNormalizada.includes('sst')) {
-                categoriaFinal = 'Seguridad';
-            } else if (catNormalizada.includes('cadena')) {
-                categoriaFinal = 'Cadena';
-            } else if (catNormalizada.includes('gobernanza')) {
-                categoriaFinal = 'Gobernanza'; // Asegúrate de tener esta opción en tu <select>
-            }
+            if (catNormalizada.includes('social')) categoriaFinal = 'Responsabilidad Social';
+            else if (catNormalizada.includes('ambiente')) categoriaFinal = 'Medio Ambiente';
+            else if (catNormalizada.includes('inocuidad')) categoriaFinal = 'Inocuidad';
+            else if (catNormalizada.includes('seguridad') || catNormalizada.includes('sst')) categoriaFinal = 'Seguridad';
+            else if (catNormalizada.includes('cadena')) categoriaFinal = 'Cadena';
+            else if (catNormalizada.includes('gobernanza')) categoriaFinal = 'Gobernanza';
         }
-
-        setValue('categoria', categoriaFinal);
-
-        // 4. Asignar Áreas y Objetivo
-        if (plan.areas_objetivo) setValue('area_objetivo', plan.areas_objetivo);
-        else setValue('area_objetivo', '');
-
+        setValue('categoria', categoriaFinal, { shouldValidate: true });
+        setValue('area_objetivo', plan.areas_objetivo || '');
         if (plan.objetivo) setValue('objetivo', plan.objetivo);
-
-        setValue('modalidad', 'Interna');
+        setValue('modalidad', 'Interna', { shouldValidate: true });
         setMostrarSugerencias(false);
     };
 
-    // --- LOGICA TABLA INTELIGENTE ---
     const getOpcionesFila = (index: number) => {
         const filaActual = participantesWatch[index];
         const areaSeleccionada = filaActual?.area;
@@ -409,7 +347,6 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
         const cargosUnicos = Array.from(new Set(baseParaCargos.map(t => t.cargo).filter(Boolean))).sort();
         const cargosDisponibles = cargosUnicos.map(c => ({ value: c, label: c }));
 
-        // 🟢 PADSTART: Asegura que el selector vea los DNI con 8 dígitos
         const opcionesNombres = trabajadoresFiltrados.map(t => ({
             value: String(t.dni).padStart(8, '0'),
             label: `${t.apellidos} ${t.nombres}`,
@@ -426,23 +363,19 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
 
     const autocompletarFila = (index: number, trabajador: TrabajadorSelect) => {
         if (!trabajador) return;
-
-        // 🟢 VALIDACIÓN ANTI-DUPLICADOS (CON SOPORTE PARA CEROS)
         const yaExiste = participantesWatch.some((p, i) => {
             if (i === index || !p.dni) return false;
             return String(p.dni).padStart(8, '0') === String(trabajador.dni).padStart(8, '0');
         });
 
         if (yaExiste) {
-            alert(`⚠️ ¡Atención! El trabajador ${trabajador.apellidos} ${trabajador.nombres} ya está en la lista.`);
+            setMensajeAlerta({ tipo: 'error', texto: `El trabajador ${trabajador.apellidos} ${trabajador.nombres} ya está en la lista.` });
             setValue(`participantes.${index}.dni`, '');
             setValue(`participantes.${index}.apellidos_nombres`, '');
             return;
         }
 
-        // 🟢 PADSTART: Guardamos siempre con 8 dígitos
         const dniLimpio = String(trabajador.dni).padStart(8, '0');
-
         setValue(`participantes.${index}.dni`, dniLimpio);
         setValue(`participantes.${index}.apellidos_nombres`, `${trabajador.apellidos} ${trabajador.nombres}`);
         setValue(`participantes.${index}.area`, trabajador.area);
@@ -457,13 +390,11 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
     const cargarTrabajadoresDeArea = () => {
         const areaObjetivo = watch('area_objetivo');
         if (!areaObjetivo) {
-            alert("Primero selecciona un tema para saber a qué áreas cargar.");
+            setMensajeAlerta({ tipo: 'error', texto: "Primero selecciona un tema para saber a qué áreas cargar." });
             return;
         }
 
         const areasBusqueda = areaObjetivo.split(',').map(a => normalizar(a.trim()));
-
-        // 🟢 DICCIONARIO DE SINÓNIMOS
         const diccionario: Record<string, string[]> = {
             "rrhh": ["recursos humanos", "personal", "rrhh", "social"],
             "sig": ["sig", "sistema de gestion", "integrado", "calidad", "sso"],
@@ -480,25 +411,20 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
         const sugeridos = listaTrabajadores.filter(t => {
             const areaT = normalizar(t.area);
             const catT = normalizar(t.categoria || "");
-
             return areasBusqueda.some(aPlan => {
                 if (diccionario[aPlan]) {
-                    return diccionario[aPlan].some(sinonimo =>
-                        areaT.includes(sinonimo) || catT.includes(sinonimo)
-                    );
+                    return diccionario[aPlan].some(sinonimo => areaT.includes(sinonimo) || catT.includes(sinonimo));
                 }
                 return areaT.includes(aPlan) || catT.includes(aPlan);
             });
         });
 
         if (sugeridos.length === 0) {
-            alert("No se encontraron trabajadores para: " + areaObjetivo);
+            setMensajeAlerta({ tipo: 'error', texto: "No se encontraron trabajadores para: " + areaObjetivo });
             return;
         }
 
-        // 🟢 LÓGICA DE REEMPLAZO O AGREGADO
         const hayDatosPrevios = fields.length > 0 && (fields.length > 1 || participantesWatch[0].dni !== "");
-
         let debeReemplazar = false;
 
         if (hayDatosPrevios) {
@@ -521,14 +447,10 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
             firma_url: t.firma_url || ''
         }));
 
-        if (debeReemplazar) {
-            replace(nuevasFilas);
-        } else {
-            append(nuevasFilas);
-        }
+        if (debeReemplazar) replace(nuevasFilas);
+        else append(nuevasFilas);
     };
 
-    // --- FIRMAS ---
     const handleUploadFirma = async (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -542,18 +464,11 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
         if (workerPadRef.current && !workerPadRef.current.isEmpty() && indiceFirmaActiva !== null) {
             const canvas = workerPadRef.current.getCanvas();
             const base64 = canvas.toDataURL('image/png');
-
             const dni = participantesWatch[indiceFirmaActiva].dni || 'sin_dni';
             const url = await uploadBase64(base64, `firma_trab_${dni}_${Date.now()}.png`);
-
             if (url) {
-                // 🟢 Actualizamos el valor y forzamos la validación para que se refleje en la lista
-                setValue(`participantes.${indiceFirmaActiva}.firma_url`, url, {
-                    shouldValidate: true,
-                    shouldDirty: true
-                });
+                setValue(`participantes.${indiceFirmaActiva}.firma_url`, url, { shouldValidate: true, shouldDirty: true });
             }
-
             cerrarModalFirma();
         }
     };
@@ -566,39 +481,30 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
                 if (url) setValue('expositor_firma', url);
             } catch (error) {
                 console.error(error);
-                alert("Error al subir firma expositor");
+                setMensajeAlerta({ tipo: 'error', texto: "Error al subir firma expositor" });
             } finally {
                 setUploadingExpositor(false);
             }
         }
     };
 
-    // --- SUBMIT ---
+    // 🟢 SUBMIT MEJORADO
     const onSubmit: SubmitHandler<Inputs> = async (data) => {
         if (esAuditor) return;
 
         setSaving(true);
+        setMensajeAlerta(null);
         try {
             let firmaExpositorUrl = data.expositor_firma;
 
-            // 🟢 FIRMA DEL EXPOSITOR DESDE PANTALLA
-            if (
-                modoFirma === 'pantalla' &&
-                signaturePadRef.current &&
-                !signaturePadRef.current.isEmpty()
-            ) {
+            if (modoFirma === 'pantalla' && signaturePadRef.current && !signaturePadRef.current.isEmpty()) {
                 const canvas = signaturePadRef.current.getCanvas();
                 const base64 = canvas.toDataURL('image/png');
-
-                firmaExpositorUrl = await uploadBase64(
-                    base64,
-                    `firma_expositor_${Date.now()}.png`
-                );
+                firmaExpositorUrl = await uploadBase64(base64, `firma_expositor_${Date.now()}.png`);
             }
 
             const formData = new FormData();
 
-            // 🟢 CAMPOS SIMPLES
             (Object.keys(data) as Array<keyof Inputs>).forEach((key) => {
                 if (key !== 'participantes' && key !== 'expositor_firma') {
                     const val = data[key];
@@ -608,61 +514,59 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
                 }
             });
 
-            // 🟢 FIRMA EXPOSITOR (URL)
-            if (firmaExpositorUrl) {
-                formData.append('expositor_firma', firmaExpositorUrl);
-            }
+            if (firmaExpositorUrl) formData.append('expositor_firma', firmaExpositorUrl);
 
-            // 🟢 PARTICIPANTES (OBLIGATORIO)
             const participantesData = data.participantes.map((p, i) => ({
                 ...p,
                 numero: i + 1,
                 firma_url: p.firma_url || null,
             }));
 
-            formData.append(
-                'participantes',
-                JSON.stringify(participantesData)
-            );
+            formData.append('participantes', JSON.stringify(participantesData));
 
-            // 🟢 EVIDENCIAS NUEVAS (CLAVE)
             evidenciasNuevas.forEach((file) => {
                 formData.append('evidencias', file);
             });
 
-            // 🟢 DEBUG (hazlo una vez)
-            for (const pair of formData.entries()) {
-                console.log(pair[0], pair[1]);
-            }
-
-            // 🟢 ENVIAR FORZANDO MULTIPART
-            await api.put(`/capacitaciones/${id}`, formData, {
-                headers: {
-                    'Content-Type': 'multipart/form-data',
-                },
+            const response = await api.put(`/capacitaciones/${id}`, formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
             });
 
-            alert('¡Capacitación actualizada correctamente!');
-            window.location.href = '/dashboard';
-
-        } catch (error: unknown) {
-            console.error(error);
-            let msg = 'Error desconocido';
-
-            if (error instanceof AxiosError) {
-                msg = error.response?.data?.error || error.message;
+            if (response.status === 200 || response.status === 201) {
+                setMensajeAlerta({ tipo: 'exito', texto: '¡Capacitación actualizada correctamente! 🔄' });
+                setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 100);
+                setTimeout(() => router.push('/dashboard'), 2000);
             }
 
-            alert('Error al actualizar: ' + msg);
+        } catch (error: unknown) {
+            console.error("🔥 Error:", error);
+            let msg = 'Error desconocido al actualizar';
+
+            if (error instanceof AxiosError) {
+                const apiError = error.response?.data?.error || error.response?.data?.message || error.message;
+                msg = apiError;
+
+                const textoError = String(apiError).toLowerCase();
+                if (textoError.includes('código de acta') || textoError.includes('duplicad') || textoError.includes('registrado')) {
+                    msg = "El Código de Acta ingresado ya existe. Por favor, usa uno diferente.";
+                    setError("codigo_acta", { type: "manual", message: "Código duplicado" });
+                    setTimeout(() => setFocus("codigo_acta"), 100);
+                }
+            } else if (error instanceof Error) {
+                msg = error.message;
+            }
+
+            setMensajeAlerta({ tipo: 'error', texto: msg });
+            setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 100);
         } finally {
             setSaving(false);
         }
     };
 
-
     const onError: SubmitErrorHandler<Inputs> = (e) => {
         console.error("Errores de validación:", e);
-        alert("Faltan campos obligatorios. Revisa los bordes rojos.");
+        setMensajeAlerta({ tipo: 'error', texto: "Faltan campos obligatorios. Revisa los recuadros resaltados en rojo." });
+        setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 100);
     };
 
     const customStyles = {
@@ -675,6 +579,24 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
 
     return (
         <div className="max-w-6xl mx-auto space-y-6 pb-20 relative">
+
+            {/* 🟢 BANNER DE ALERTAS FLOTANTE */}
+            {mensajeAlerta && (
+                <div className={`fixed top-6 left-1/2 transform -translate-x-1/2 z-9999 w-[90%] max-w-md p-4 rounded-xl flex items-start gap-3 shadow-2xl border transition-all animate-in slide-in-from-top-8 fade-in ${mensajeAlerta.tipo === 'error' ? 'bg-white border-red-500 text-red-800' : 'bg-white border-green-500 text-green-800'
+                    }`}>
+                    <div className={`p-2 rounded-full ${mensajeAlerta.tipo === 'error' ? 'bg-red-100' : 'bg-green-100'}`}>
+                        {mensajeAlerta.tipo === 'error' ? <AlertCircle className="text-red-600" size={24} /> : <CheckCircle2 className="text-green-600" size={24} />}
+                    </div>
+                    <div className="flex-1 pt-1">
+                        <h4 className="font-extrabold text-sm">{mensajeAlerta.tipo === 'error' ? 'Acción Requerida' : 'Operación Exitosa'}</h4>
+                        <p className="text-sm text-gray-600 mt-1">{mensajeAlerta.texto}</p>
+                    </div>
+                    <button type="button" onClick={() => setMensajeAlerta(null)} className="p-1 hover:bg-gray-100 rounded-full transition-colors">
+                        <X size={20} className="text-gray-400" />
+                    </button>
+                </div>
+            )}
+
             {/* Modal Firma */}
             {!esAuditor && indiceFirmaActiva !== null && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
@@ -753,8 +675,8 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
                 </div>
             </div>
 
-            {/* 🟢 TABS DE NAVEGACIÓN (MAIN TAB) */}
-            <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-lg w-fit">
+            {/* 🟢 TABS DE NAVEGACIÓN */}
+            <div className="flex gap-1 mb-6 mt-4 bg-gray-100 p-1 rounded-lg w-fit">
                 <button
                     onClick={() => setMainTab('detalle')}
                     className={`px-4 py-2 rounded-md text-sm font-bold transition ${mainTab === 'detalle' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
@@ -769,7 +691,6 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
                 </button>
             </div>
 
-            {/* 🟢 RENDERIZADO CONDICIONAL DE LA PÁGINA */}
             {mainTab === 'evaluaciones' ? (
                 <EvaluacionesTab
                     idCapacitacion={Number(id)}
@@ -778,7 +699,7 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
                 />
             ) : (
 
-                /* --- FORMULARIO PRINCIPAL (DETALLE) --- */
+                /* --- FORMULARIO PRINCIPAL --- */
                 <form onSubmit={handleSubmit(onSubmit, onError)} className="space-y-6 mt-6">
                     <input type="hidden" {...register("area_objetivo")} />
 
@@ -793,7 +714,12 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
                                     <label className={`flex items-center gap-2 border p-3 rounded-lg w-full ${esAuditor ? 'opacity-70' : 'cursor-pointer'} ${watch('sede_empresa') === 'Olmos' ? 'bg-blue-50 border-blue-500' : ''}`}><input type="radio" disabled={esAuditor} value="Olmos" {...register("sede_empresa")} className="accent-blue-600" /> <span className="font-bold text-sm">OLMOS</span></label>
                                 </div>
                             </div>
-                            <div><label className="block text-sm font-medium text-gray-700 mb-1">Código Acta</label><input disabled={esAuditor} {...register("codigo_acta", { required: true })} className={`w-full border rounded px-3 py-2 bg-gray-50 font-mono text-blue-900 ${errors.codigo_acta ? 'border-red-500' : ''}`} /></div>
+                            <div>
+                                {/* 🔴 ALERTA VISUAL: Código Acta */}
+                                <label className={`block text-sm font-medium mb-1 ${errors.codigo_acta ? 'text-red-600 font-bold' : 'text-gray-700'}`}>Código Acta <span className="text-red-500">*</span></label>
+                                <input disabled={esAuditor} {...register("codigo_acta", { required: "Este campo es obligatorio" })} className={`w-full border rounded px-3 py-2 font-mono outline-none transition-all disabled:bg-gray-100 ${errors.codigo_acta ? 'border-red-500 bg-red-50 ring-2 ring-red-200 text-red-900' : 'bg-gray-50 text-blue-900 focus:ring-2 focus:ring-blue-500'}`} />
+                                {errors.codigo_acta && <span className="text-red-500 text-xs font-bold mt-1 block">{errors.codigo_acta.message as string || "Este campo es obligatorio"}</span>}
+                            </div>
                         </div>
                     </div>
 
@@ -802,11 +728,13 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
                         <div className="flex items-center gap-2 mb-4 border-b pb-2 text-blue-700"><Clock size={20} /><h3 className="font-bold">Detalles de la Sesión</h3></div>
                         <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
                             <div className="md:col-span-8 relative" ref={autocompleteRef}>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Tema Principal</label>
+                                {/* 🔴 ALERTA VISUAL: Tema Principal */}
+                                <label className={`block text-sm font-medium mb-1 ${errors.tema_principal ? 'text-red-600 font-bold' : 'text-gray-700'}`}>Tema Principal <span className="text-red-500">*</span></label>
                                 <div className="relative">
-                                    <input disabled={esAuditor} {...temaRegister} onChange={(e) => { temaRegister.onChange(e); handleTemaSearch(e.target.value); }} className="w-full border rounded pl-9 pr-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="Buscar tema..." autoComplete="off" />
-                                    <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
+                                    <input disabled={esAuditor} {...temaRegister} onChange={(e) => { temaRegister.onChange(e); handleTemaSearch(e.target.value); }} className={`w-full border rounded pl-9 pr-3 py-2 outline-none transition-all disabled:bg-gray-100 ${errors.tema_principal ? 'border-red-500 bg-red-50 ring-2 ring-red-200 text-red-900' : 'focus:ring-2 focus:ring-blue-500'}`} placeholder="Buscar tema..." autoComplete="off" />
+                                    <Search className={`absolute left-3 top-2.5 ${errors.tema_principal ? 'text-red-400' : 'text-gray-400'}`} size={18} />
                                 </div>
+                                {errors.tema_principal && <span className="text-red-500 text-xs mt-1 block">Debes seleccionar o escribir un tema</span>}
                                 {mostrarSugerencias && sugerencias.length > 0 && (
                                     <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-60 overflow-y-auto">
                                         <ul>
@@ -824,12 +752,19 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
                                 )}
                             </div>
                             <div className="md:col-span-4"><label className="block text-sm font-medium text-gray-400 mb-1">Actividad Económica</label><div className="w-full border rounded px-3 py-2 bg-gray-100 text-gray-500 text-sm">{empresaConfig?.actividad_economica}</div></div>
-                            <div className="md:col-span-3"><label className="block text-sm font-medium mb-1">Fecha <span className="text-red-500">*</span></label><input type="date" disabled={esAuditor} {...register("fecha", { required: true })} className={`w-full border rounded px-3 py-2 ${errors.fecha ? 'border-red-500' : ''}`} /></div>
-                            <div className="md:col-span-3"><label className="block text-sm font-medium mb-1">Inicio <span className="text-red-500">*</span></label><input type="time" disabled={esAuditor} {...register("hora_inicio", { required: true })} className={`w-full border rounded px-3 py-2 ${errors.hora_inicio ? 'border-red-500' : ''}`} /></div>
-                            <div className="md:col-span-3"><label className="block text-sm font-medium mb-1">Término <span className="text-red-500">*</span></label><input type="time" disabled={esAuditor} {...register("hora_termino", { required: true })} className={`w-full border rounded px-3 py-2 ${errors.hora_termino ? 'border-red-500' : ''}`} /></div>
-                            <div className="md:col-span-3"><label className="block text-sm font-medium mb-1">Total Horas</label><input disabled={esAuditor} {...register("total_horas")} className="w-full border rounded px-3 py-2" /></div>
-                            <div className="md:col-span-12"><label className="block text-sm font-medium mb-1">Objetivo</label><textarea disabled={esAuditor} {...register("objetivo")} rows={2} className="w-full border rounded px-3 py-2" /></div>
-                            <div className="md:col-span-12"><label className="block text-sm font-medium mb-1">Temario</label><textarea disabled={esAuditor} {...register("temario")} rows={3} className="w-full border rounded px-3 py-2" /></div>
+
+                            <div className="md:col-span-3">
+                                {/* 🔴 ALERTA VISUAL: Fecha */}
+                                <label className={`block text-sm font-medium mb-1 ${errors.fecha ? 'text-red-600 font-bold' : 'text-gray-700'}`}>Fecha <span className="text-red-500">*</span></label>
+                                <input type="date" disabled={esAuditor} {...register("fecha", { required: true })} className={`w-full border rounded px-3 py-2 outline-none transition-all disabled:bg-gray-100 ${errors.fecha ? 'border-red-500 bg-red-50 ring-2 ring-red-200' : 'focus:ring-2 focus:ring-blue-500'}`} />
+                                {errors.fecha && <span className="text-red-500 text-xs mt-1 block">Obligatorio</span>}
+                            </div>
+
+                            <div className="md:col-span-3"><label className="block text-sm font-medium mb-1">Inicio</label><input type="time" disabled={esAuditor} {...register("hora_inicio")} className="w-full border rounded px-3 py-2 disabled:bg-gray-100" /></div>
+                            <div className="md:col-span-3"><label className="block text-sm font-medium mb-1">Término</label><input type="time" disabled={esAuditor} {...register("hora_termino")} className="w-full border rounded px-3 py-2 disabled:bg-gray-100" /></div>
+                            <div className="md:col-span-3"><label className="block text-sm font-medium mb-1">Total Horas</label><input disabled={esAuditor} {...register("total_horas")} className="w-full border rounded px-3 py-2 disabled:bg-gray-100" /></div>
+                            <div className="md:col-span-12"><label className="block text-sm font-medium mb-1">Objetivo</label><textarea disabled={esAuditor} {...register("objetivo")} rows={2} className="w-full border rounded px-3 py-2 disabled:bg-gray-100" /></div>
+                            <div className="md:col-span-12"><label className="block text-sm font-medium mb-1">Temario</label><textarea disabled={esAuditor} {...register("temario")} rows={3} className="w-full border rounded px-3 py-2 disabled:bg-gray-100" /></div>
                         </div>
                     </div>
 
@@ -838,23 +773,34 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
                         <div className="flex items-center gap-2 mb-4 border-b pb-2 text-blue-700"><FileText size={20} /><h3 className="font-bold">Clasificación</h3></div>
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 text-sm">
                             <div>
-                                <label className="block font-bold text-gray-700 mb-2">Actividad</label>
-                                <div className="grid grid-cols-2 gap-2">{['Inducción', 'Capacitación', 'Entrenamiento', 'Taller', 'Charla', 'Simulacro', 'Otros'].map(op => (<label key={op} className="flex items-center gap-2"><input type="radio" disabled={esAuditor} value={op} {...register("actividad", { required: true })} /> {op}</label>))}</div>
-                                {errors.actividad && <span className="text-red-500 text-xs">Requerido</span>}
+                                {/* 🔴 ALERTA VISUAL: Actividad */}
+                                <label className={`block font-bold mb-2 ${errors.actividad ? 'text-red-600' : 'text-gray-700'}`}>Actividad <span className="text-red-500">*</span></label>
+                                <div className={`grid grid-cols-2 gap-2 p-3 rounded-lg border transition-all ${errors.actividad ? 'bg-red-50 border-red-300 ring-2 ring-red-200' : 'border-transparent'}`}>{['Inducción', 'Capacitación', 'Entrenamiento', 'Taller', 'Charla', 'Simulacro', 'Otros'].map(op => (<label key={op} className="flex items-center gap-2"><input type="radio" disabled={esAuditor} value={op} {...register("actividad", { required: true })} className="accent-blue-600" /> {op}</label>))}</div>
+                                {errors.actividad && <span className="text-red-500 text-xs mt-1 block">Selecciona el tipo de actividad</span>}
                             </div>
                             <div>
-                                <label className="block font-bold text-gray-700 mb-2">Categoría</label>
-                                <select disabled={esAuditor} {...register("categoria", { required: true })} className="w-full border rounded px-2 py-1.5"><option value="">-- Seleccionar --</option><option value="Seguridad">Seguridad</option><option value="Inocuidad">Inocuidad</option><option value="Cadena">Cadena Suministro</option><option value="Medio Ambiente">Medio Ambiente</option><option value="Responsabilidad Social">Resp. Social</option><option value="Gobernanza">Gobernanza</option><option value="Otros">Otros</option></select>
-                                {errors.categoria && <span className="text-red-500 text-xs">Requerido</span>}
+                                {/* 🔴 ALERTA VISUAL: Categoría */}
+                                <label className={`block font-bold mb-2 ${errors.categoria ? 'text-red-600' : 'text-gray-700'}`}>Categoría <span className="text-red-500">*</span></label>
+                                <select disabled={esAuditor} {...register("categoria", { required: true })} className={`w-full border rounded px-3 py-2 outline-none transition-all disabled:bg-gray-100 ${errors.categoria ? 'border-red-500 bg-red-50 ring-2 ring-red-200 text-red-900' : 'focus:ring-2 focus:ring-blue-500'}`}><option value="">-- Seleccionar --</option><option value="Seguridad">Seguridad</option><option value="Inocuidad">Inocuidad</option><option value="Cadena">Cadena Suministro</option><option value="Medio Ambiente">Medio Ambiente</option><option value="Responsabilidad Social">Resp. Social</option><option value="Gobernanza">Gobernanza</option><option value="Otros">Otros</option></select>
+                                {errors.categoria && <span className="text-red-500 text-xs mt-1 block">Selecciona una categoría</span>}
                             </div>
                             <div className="flex gap-8">
-                                <div><label className="block font-bold mb-2">Modalidad</label><div className="flex gap-3"><label><input type="radio" disabled={esAuditor} value="Interna" {...register("modalidad", { required: true })} /> Interna</label><label><input type="radio" disabled={esAuditor} value="Externa" {...register("modalidad", { required: true })} /> Externa</label></div></div>
-                                <div><label className="block font-bold mb-2">Acción Correctiva</label><div className="flex gap-3"><label><input type="radio" disabled={esAuditor} value="SI" {...register("accion_correctiva", { required: true })} /> SI</label><label><input type="radio" disabled={esAuditor} value="NO" {...register("accion_correctiva", { required: true })} /> NO</label></div></div>
+                                <div>
+                                    {/* 🔴 ALERTA VISUAL: Modalidad */}
+                                    <label className={`block font-bold mb-2 ${errors.modalidad ? 'text-red-600' : 'text-gray-700'}`}>Modalidad <span className="text-red-500">*</span></label>
+                                    <div className={`flex gap-3 p-2 rounded-lg border transition-all ${errors.modalidad ? 'bg-red-50 border-red-300 ring-2 ring-red-200' : 'border-transparent'}`}><label><input type="radio" disabled={esAuditor} value="Interna" {...register("modalidad", { required: true })} className="accent-blue-600" /> Interna</label><label><input type="radio" disabled={esAuditor} value="Externa" {...register("modalidad", { required: true })} className="accent-blue-600" /> Externa</label></div>
+                                </div>
+                                <div>
+                                    {/* 🔴 ALERTA VISUAL: Acción Correctiva */}
+                                    <label className={`block font-bold mb-2 ${errors.accion_correctiva ? 'text-red-600' : 'text-gray-700'}`}>Acción Correctiva <span className="text-red-500">*</span></label>
+                                    <div className={`flex gap-3 p-2 rounded-lg border transition-all ${errors.accion_correctiva ? 'bg-red-50 border-red-300 ring-2 ring-red-200' : 'border-transparent'}`}><label><input type="radio" disabled={esAuditor} value="SI" {...register("accion_correctiva", { required: true })} className="accent-blue-600" /> SI</label><label><input type="radio" disabled={esAuditor} value="NO" {...register("accion_correctiva", { required: true })} className="accent-blue-600" /> NO</label></div>
+                                </div>
                             </div>
                             <div>
-                                <label className="block font-bold mb-2">Centros / Lugar</label>
-                                <div className="flex flex-wrap gap-3">{['Planta Packing', 'Fundo', 'Campo', 'Auditorio', 'Otros'].map(c => (<label key={c} className="flex gap-1"><input type="radio" disabled={esAuditor} value={c} {...register("centros", { required: true })} /> {c}</label>))}</div>
-                                {errors.centros && <span className="text-red-500 text-xs">Requerido</span>}
+                                {/* 🔴 ALERTA VISUAL: Centros */}
+                                <label className={`block font-bold mb-2 ${errors.centros ? 'text-red-600' : 'text-gray-700'}`}>Centros / Lugar <span className="text-red-500">*</span></label>
+                                <div className={`flex flex-wrap gap-3 p-3 rounded-lg border transition-all ${errors.centros ? 'bg-red-50 border-red-300 ring-2 ring-red-200' : 'border-transparent'}`}>{['Planta Packing', 'Fundo', 'Campo', 'Auditorio', 'Otros'].map(c => (<label key={c} className="flex gap-1"><input type="radio" disabled={esAuditor} value={c} {...register("centros", { required: true })} className="accent-blue-600" /> {c}</label>))}</div>
+                                {errors.centros && <span className="text-red-500 text-xs mt-1 block">Selecciona un lugar</span>}
                             </div>
                         </div>
                     </div>
@@ -870,96 +816,53 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="flex flex-col gap-1">
                                         <label className="text-xs font-semibold text-gray-500 uppercase">Nombre</label>
-                                        <input
-                                            disabled={esAuditor}
-                                            {...register("expositor_nombre")}
-                                            placeholder="Nombre Completo"
-                                            className="w-full border rounded px-3 py-2 text-sm bg-gray-50 disabled:opacity-75"
-                                        />
+                                        <input disabled={esAuditor} {...register("expositor_nombre")} placeholder="Nombre Completo" className="w-full border rounded px-3 py-2 text-sm bg-gray-50 disabled:opacity-75 outline-none" />
                                     </div>
                                     <div className="flex flex-col gap-1">
                                         <label className="text-xs font-semibold text-gray-500 uppercase">DNI</label>
-                                        <input
-                                            disabled={esAuditor}
-                                            {...register("expositor_dni")}
-                                            placeholder="DNI"
-                                            className="w-full border rounded px-3 py-2 text-sm bg-gray-50 disabled:opacity-75"
-                                        />
+                                        <input disabled={esAuditor} {...register("expositor_dni")} placeholder="DNI" className="w-full border rounded px-3 py-2 text-sm bg-gray-50 disabled:opacity-75 outline-none" />
                                     </div>
                                 </div>
 
                                 <div className="flex flex-col gap-1">
                                     <label className="text-xs font-semibold text-gray-500 uppercase">Institución de Procedencia</label>
-                                    <input
-                                        disabled={esAuditor}
-                                        {...register("institucion_procedencia")}
-                                        placeholder="Nombre de la institución"
-                                        className="w-full border rounded px-3 py-2 text-sm bg-white font-medium text-blue-700"
-                                    />
+                                    <input disabled={esAuditor} {...register("institucion_procedencia")} placeholder="Nombre de la institución" className="w-full border rounded px-3 py-2 text-sm bg-white font-medium text-blue-700 outline-none disabled:bg-gray-100" />
                                 </div>
 
                                 <div className="border border-gray-200 rounded-lg p-3 bg-gray-50 text-center">
                                     <span className="text-xs font-bold text-gray-500 uppercase block mb-2">Firma Expositor</span>
 
-                                    {/* 1. Si existe una firma (en el estado de react-hook-form) */}
                                     {watch('expositor_firma') ? (
                                         <div className="flex flex-col items-center gap-2">
                                             <div className="relative h-20 w-full bg-white border rounded p-1 shadow-sm">
-                                                {/* Obtenemos la URL procesada */}
                                                 {(() => {
                                                     const imageUrl = getImageUrl(watch('expositor_firma'));
-
-                                                    // Si no hay URL, mostramos un estado vacío o cargando
                                                     if (!imageUrl) {
                                                         return (
-                                                            <div className="flex items-center justify-center h-full text-gray-400 text-[10px] italic">
-                                                                Sin firma registrada
-                                                            </div>
+                                                            <div className="flex items-center justify-center h-full text-gray-400 text-[10px] italic">Sin firma registrada</div>
                                                         );
                                                     }
-
                                                     return (
                                                         /* eslint-disable-next-line @next/next/no-img-element */
-                                                        <img
-                                                            src={imageUrl}
-                                                            alt="Firma Expositor"
-                                                            className="h-full w-full object-contain"
-                                                        />
+                                                        <img src={imageUrl} alt="Firma Expositor" className="h-full w-full object-contain" />
                                                     );
                                                 })()}
                                             </div>
                                             <div className="flex items-center justify-center gap-2 text-green-600 font-medium text-sm">
                                                 <CheckCircle2 size={16} /> Firmada con éxito
                                                 {!esAuditor && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setValue('expositor_firma', '')}
-                                                        className="p-1 hover:bg-red-50 rounded-full text-red-500 transition"
-                                                    >
+                                                    <button type="button" onClick={() => setValue('expositor_firma', '')} className="p-1 hover:bg-red-50 rounded-full text-red-500 transition">
                                                         <Trash2 size={14} />
                                                     </button>
                                                 )}
                                             </div>
                                         </div>
                                     ) : (
-                                        /* 2. Si NO existe firma y NO es auditor, mostrar opciones para firmar */
                                         !esAuditor ? (
                                             <div className="flex flex-col items-center gap-2">
                                                 <div className="flex justify-center gap-2">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setModoFirma('subir')}
-                                                        className={`text-xs border px-3 py-1 rounded transition ${modoFirma === 'subir' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600'}`}
-                                                    >
-                                                        <ImageIcon size={14} className="inline mr-1" /> Subir
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setModoFirma('pantalla')}
-                                                        className={`text-xs border px-3 py-1 rounded transition ${modoFirma === 'pantalla' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600'}`}
-                                                    >
-                                                        <PenTool size={14} className="inline mr-1" /> Firmar
-                                                    </button>
+                                                    <button type="button" onClick={() => setModoFirma('subir')} className={`text-xs border px-3 py-1 rounded transition ${modoFirma === 'subir' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600'}`}><ImageIcon size={14} className="inline mr-1" /> Subir</button>
+                                                    <button type="button" onClick={() => setModoFirma('pantalla')} className={`text-xs border px-3 py-1 rounded transition ${modoFirma === 'pantalla' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600'}`}><PenTool size={14} className="inline mr-1" /> Firmar</button>
                                                 </div>
 
                                                 {modoFirma === 'subir' && (
@@ -976,7 +879,6 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
                                                 )}
                                             </div>
                                         ) : (
-                                            /* 3. Si es auditor y no hay firma */
                                             <span className="text-xs text-gray-400 italic">No se registró firma</span>
                                         )
                                     )}
@@ -992,64 +894,37 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
                             <div className="grid grid-cols-3 gap-3">
                                 {!esAuditor && (
                                     <div className="border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center h-28 hover:bg-blue-50 hover:border-blue-300 cursor-pointer relative transition group">
-                                        <input
-                                            type="file"
-                                            multiple
-                                            accept="image/*"
-                                            onChange={handleFileChange}
-                                            className="absolute inset-0 opacity-0 cursor-pointer z-10"
-                                        />
+                                        <input type="file" multiple accept="image/*" onChange={handleFileChange} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
                                         <Camera className="text-gray-400 group-hover:text-blue-500 transition" size={24} />
                                         <span className="text-[10px] font-bold text-gray-400 uppercase mt-1 group-hover:text-blue-500">Añadir Fotos</span>
                                     </div>
                                 )}
 
-                                {/* Fotos cargadas de Cloudinary (Existentes) */}
+                                {/* Fotos Existentes */}
                                 {fotosExistentes.map(f => (
                                     <div key={f.id_documento} className="relative h-28 border rounded-lg overflow-hidden group shadow-sm">
-                                        <a
-                                            href={getImageUrl(f.url)} // 🟢 Asegura que el link también funcione
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="p-1 bg-white rounded-full text-gray-700 mx-1"
-                                        >
+                                        <a href={getImageUrl(f.url)} target="_blank" rel="noopener noreferrer" className="p-1 bg-white rounded-full text-gray-700 mx-1">
                                             <Camera size={12} />
                                         </a>
                                         <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
-                                            <a href={getImageUrl(f.url)} target="_blank" className="p-1 bg-white rounded-full text-gray-700 mx-1">
+                                            <a href={getImageUrl(f.url)} target="_blank" rel="noopener noreferrer" className="p-1 bg-white rounded-full text-gray-700 mx-1">
                                                 <Camera size={12} />
                                             </a>
                                             {!esAuditor && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => removeFotoExistente(f.id_documento)}
-                                                    className="p-1 bg-red-500 rounded-full text-white mx-1 hover:scale-110 transition"
-                                                >
-                                                    <X size={12} />
-                                                </button>
+                                                <button type="button" onClick={() => removeFotoExistente(f.id_documento)} className="p-1 bg-red-500 rounded-full text-white mx-1 hover:scale-110 transition"><X size={12} /></button>
                                             )}
                                         </div>
                                     </div>
                                 ))}
 
-                                {/* Previsualización de Fotos Nuevas (Antes de guardar) */}
+                                {/* Fotos Nuevas */}
                                 {evidenciasNuevas.map((f, i) => (
-                                    <div key={i} className="relative h-28 border-2 border-blue-200 rounded-lg overflow-hidden group shadow-sm">|
+                                    <div key={i} className="relative h-28 border-2 border-blue-200 rounded-lg overflow-hidden group shadow-sm">
                                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                                        <img
-                                            src={URL.createObjectURL(f)}
-                                            alt="Nueva evidencia"
-                                            className="object-cover w-full h-full"
-                                        />
+                                        <img src={URL.createObjectURL(f)} alt="Nueva evidencia" className="object-cover w-full h-full" />
                                         <div className="absolute top-0 left-0 bg-blue-600 text-[8px] text-white px-1 font-bold">NUEVA</div>
                                         {!esAuditor && (
-                                            <button
-                                                type="button"
-                                                onClick={() => removeEvidenciaNueva(i)}
-                                                className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full shadow-lg hover:bg-red-600 transition"
-                                            >
-                                                <X size={12} />
-                                            </button>
+                                            <button type="button" onClick={() => removeEvidenciaNueva(i)} className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full shadow-lg hover:bg-red-600 transition"><X size={12} /></button>
                                         )}
                                     </div>
                                 ))}
@@ -1063,7 +938,6 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
                     {/* 6. LISTA DE PERSONAS (ASISTENTES Y FALTANTES) */}
                     <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
                         <div className="flex flex-col md:flex-row justify-between items-end mb-6 border-b pb-2 gap-4">
-                            {/* 🟢 TABS INTERNOS (LISTA) */}
                             <div className="flex gap-2 p-1 bg-gray-100 rounded-lg">
                                 <button type="button" onClick={() => setListTab('asistentes')} className={`flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-md transition ${listTab === 'asistentes' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500'}`}><UserCheck size={16} /> Asistentes ({fields.length})</button>
                                 <button type="button" onClick={() => setListTab('faltantes')} className={`flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-md transition ${listTab === 'faltantes' ? 'bg-white text-red-600 shadow-sm' : 'text-gray-500'}`}><UserX size={16} /> Faltantes ({faltantes.length})</button>

@@ -204,7 +204,19 @@ const crearCapacitacion = async (req, res) => {
           if (fs.existsSync(f.path)) fs.unlinkSync(f.path);
         });
     }
+
     console.error("🔥 Error Final:", error);
+
+    // 🟢 NUEVO: Detectamos específicamente el error P2002 de Prisma (Registro Duplicado)
+    if (error.code === "P2002") {
+      // Retornamos 400 (Bad Request) con un mensaje que el Frontend reconocerá
+      return res.status(400).json({
+        error: "El código de acta ya está registrado",
+        detalle: "Violación de restricción única en la base de datos",
+      });
+    }
+
+    // Si es otro error distinto, enviamos el genérico
     res.status(500).json({ error: "Error al guardar", detalle: error.message });
   }
 };
@@ -212,12 +224,17 @@ const crearCapacitacion = async (req, res) => {
 // --- 2. OBTENER TODAS ---
 const obtenerCapacitaciones = async (req, res) => {
   try {
-    const { id_usuario, rol } = req.user;
-    // Filtro: Administradores y Auditores ven todo, usuarios normales solo lo suyo
+    // 🟢 1. Extraemos el ID sin importar si se llama 'id' o 'id_usuario'
+    const id_auth = req.user?.id_usuario || req.user?.id || -1;
+
+    // 🟢 2. Pasamos el rol a minúsculas para evitar errores de tipeo
+    const rol_auth = String(req.user?.rol || "").toLowerCase();
+
+    // 🟢 3. Filtro blindado: Si es -1, Prisma no devolverá actas ajenas
     const filtro =
-      rol === "Administrador" || rol === "Auditor"
+      rol_auth === "administrador" || rol_auth === "auditor"
         ? {}
-        : { creado_por: id_usuario };
+        : { creado_por: Number(id_auth) };
 
     const caps = await prisma.capacitaciones.findMany({
       where: filtro,
@@ -228,10 +245,9 @@ const obtenerCapacitaciones = async (req, res) => {
       },
     });
 
-    // Mapeamos la respuesta para que el frontend vea "institucion_procedencia"
     const formateadas = caps.map((c) => ({
       ...c,
-      institucion_procedencia: c.institucion_procedencia, // 🟢 Clave para que el frontend no falle
+      institucion_procedencia: c.institucion_procedencia,
     }));
 
     res.json(formateadas);
