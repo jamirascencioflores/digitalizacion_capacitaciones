@@ -32,24 +32,37 @@ export default function LoginPage() {
   const [recoveryStatus, setRecoveryStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
 
   const onSubmit = async (data: LoginFormInputs) => {
-    // ... onSubmit logic ...
     setLoading(true);
     setErrorGlobal(null);
     try {
       await login(data.usuario, data.contrasena);
       router.push('/dashboard');
     } catch (err: unknown) {
-      let msg = 'Error de conexión';
-      if (err instanceof AxiosError && err.response?.data?.error) {
-        msg = err.response.data.error;
-      } else if (err instanceof Error) {
-        msg = err.message;
+      if (err instanceof AxiosError && err.response) {
+        const status = err.response.status;
+        const data = err.response.data;
+
+        if (status === 400 && data.detalles) {
+          // Errores de validación de Zod
+          const validationMsg = data.detalles.map((d: any) => d.mensaje).join(', ');
+          setErrorGlobal(`Validación: ${validationMsg}`);
+        } else if (status === 401) {
+          setErrorGlobal('Usuario o contraseña incorrectos. Por favor, verifica tus credenciales.');
+        } else if (status === 403) {
+          setErrorGlobal('Tu cuenta está inactiva. Contacta al administrador.');
+        } else if (status === 500) {
+          setErrorGlobal('Error interno del servidor. Inténtalo más tarde.');
+        } else {
+          setErrorGlobal(data.error || 'Ocurrió un error inesperado.');
+        }
+      } else {
+        setErrorGlobal('No se pudo conectar con el servidor. Verifica tu internet.');
       }
-      setErrorGlobal(msg);
     } finally {
       setLoading(false);
     }
   };
+
 
   const handleRecoverySubmit = async (e: React.FormEvent) => {
     // ... handleRecoverySubmit logic ...
@@ -185,34 +198,78 @@ export default function LoginPage() {
               <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-red-500"><X size={20} /></button>
             </div>
 
-            <div className="p-6">
-              {recoveryStatus === 'success' ? (
-                <div className="text-center py-4">
-                  <div className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-green-100 text-green-600 mb-4">
-                    <CheckCircle2 size={32} />
+            <div className="p-6 min-h-[280px] flex flex-col justify-center">
+              {recoveryStatus === 'loading' ? (
+                <div className="flex flex-col items-center justify-center py-8 animate-in mt-fade-in zoom-in-95 duration-300">
+                  <div className="relative">
+                    <div className="w-16 h-16 border-4 border-blue-50 border-t-blue-600 rounded-full animate-spin" />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="w-8 h-8 bg-blue-50/50 rounded-full animate-pulse" />
+                    </div>
                   </div>
-                  <h4 className="text-lg font-bold text-gray-900">¡Solicitud Enviada!</h4>
-                  <p className="text-gray-500 mt-2 text-sm">El administrador ha recibido tu alerta. Se pondrán en contacto contigo pronto.</p>
-                  <button onClick={() => setShowModal(false)} className="mt-6 w-full py-2 bg-gray-100 rounded-lg font-medium text-gray-700 hover:bg-gray-200">Cerrar</button>
+                  <h4 className="mt-6 text-lg font-bold text-slate-800">Procesando...</h4>
+                  <p className="mt-2 text-sm text-slate-500 text-center">
+                    Estamos validando tu información y <br /> preparando el correo de recuperación.
+                  </p>
+                </div>
+              ) : recoveryStatus === 'success' ? (
+                <div className="text-center py-6 animate-in zoom-in-95 duration-300">
+                  <div className="inline-flex h-20 w-20 items-center justify-center rounded-full bg-green-50 text-green-500 mb-6 shadow-sm border border-green-100/50">
+                    <CheckCircle2 size={40} className="animate-bounce" />
+                  </div>
+                  <h4 className="text-xl font-bold text-slate-800">¡Solicitud Enviada!</h4>
+                  <p className="text-slate-500 mt-3 text-sm leading-relaxed">
+                    Si el usuario <span className="font-semibold text-slate-700">"{recoveryUser}"</span> está registrado, hemos enviado un enlace a su correo para restablecer la contraseña.
+                  </p>
+                  <div className="bg-blue-50/50 rounded-xl p-4 mt-6 border border-blue-100/50">
+                    <p className="text-xs text-blue-700 font-medium">
+                      Revisa tu bandeja de entrada y la carpeta de spam.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setShowModal(false)}
+                    className="mt-8 w-full py-3 bg-slate-900 text-white rounded-xl font-bold text-sm shadow-lg hover:bg-slate-800 transition-all active:scale-[0.98]"
+                  >
+                    Volver al Inicio
+                  </button>
                 </div>
               ) : (
                 <form onSubmit={handleRecoverySubmit}>
-                  <p className="text-sm text-gray-600 mb-4">Ingresa tu usuario. Enviaremos una alerta al administrador para que restablezca tu clave.</p>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Tu Usuario</label>
-                  <input
-                    autoFocus
-                    value={recoveryUser}
-                    onChange={(e) => setRecoveryUser(e.target.value)}
-                    className="w-full border rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 mb-4"
-                    placeholder="Ej. 12345678"
-                  />
+                  <p className="text-sm text-slate-600 mb-6 font-medium">
+                    Ingresa tu usuario o correo electrónico para recibir las instrucciones de recuperación.
+                  </p>
+
+                  <div className="space-y-1.5 mb-6">
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Tu Identificación</label>
+                    <div className="relative group">
+                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-blue-500 transition-colors">
+                        <User size={16} />
+                      </div>
+                      <input
+                        autoFocus
+                        value={recoveryUser}
+                        onChange={(e) => setRecoveryUser(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-3 text-sm outline-none focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
+                        placeholder="Usuario o correo@ejemplo.com"
+                      />
+                    </div>
+                  </div>
+
                   <button
                     type="submit"
-                    disabled={recoveryStatus === 'loading' || !recoveryUser}
-                    className="w-full bg-blue-600 text-white font-bold py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                    disabled={!recoveryUser}
+                    className={`w-full bg-blue-600 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-blue-500/25 transition-all hover:bg-blue-700 hover:shadow-blue-500/40 active:scale-[0.98] ${!recoveryUser ? 'opacity-50 cursor-not-allowed grayscale' : ''
+                      }`}
                   >
-                    {recoveryStatus === 'loading' ? 'Enviando...' : 'Enviar Solicitud'}
+                    Enviar Solicitud
                   </button>
+
+                  {recoveryStatus === 'error' && (
+                    <div className="mt-4 p-3 bg-red-50 border border-red-100 rounded-lg flex items-center gap-2 text-red-600 animate-in slide-in-from-top-2">
+                      <AlertCircle size={16} />
+                      <p className="text-xs font-semibold">Algo salió mal. Inténtalo de nuevo.</p>
+                    </div>
+                  )}
                 </form>
               )}
             </div>

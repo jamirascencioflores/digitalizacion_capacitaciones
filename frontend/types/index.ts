@@ -1,12 +1,15 @@
 // frontend/types/index.ts
 
 export interface Usuario {
+  id?: number; // Aliado para id_usuario si se usa indistintamente
   id_usuario: number;
   nombre: string;
   usuario: string;
   rol: string;
   estado: boolean;
-  token?: string; // El token viene al hacer login
+  email?: string;
+  solicita_reset?: boolean;
+  token?: string;
 }
 
 export interface Participante {

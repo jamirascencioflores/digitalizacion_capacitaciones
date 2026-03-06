@@ -18,21 +18,7 @@ export default function ContactSection() {
     };
 
     return (
-        <section id="contacto" className="relative py-24 bg-slate-950 overflow-hidden">
-
-            {/* fondo principal */}
-            <div className="absolute inset-0 z-0">
-                <Image
-                    src="https://images.unsplash.com/photo-1497366216548-37526070297c?q=80&w=2069&auto=format&fit=crop"
-                    alt="Oficina Moderna"
-                    fill
-                    className="object-cover opacity-20"
-                    priority
-                    unoptimized
-                />
-                {/* degradado oscuro */}
-                <div className="absolute inset-0 bg-gradient-to-tr from-slate-950 via-slate-900/90 to-blue-900/40" />
-            </div>
+        <section id="contacto" className="relative py-24 bg-white dark:bg-gray-950 transition-colors duration-300 overflow-hidden">
 
             {/* decoración de fondo */}
             <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-blue-500/10 rounded-full blur-[120px] pointer-events-none" />
@@ -41,11 +27,10 @@ export default function ContactSection() {
             <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
 
                 <div className="text-center mb-16">
-
-                    <h2 className="text-4xl md:text-5xl font-bold text-white mb-4 tracking-tight">
+                    <h2 className="text-4xl md:text-5xl font-bold text-slate-900 dark:text-white mb-4 tracking-tight">
                         Hablemos de <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-indigo-400">Tu Proyecto</span>
                     </h2>
-                    <p className="text-lg text-slate-400 max-w-2xl mx-auto">
+                    <p className="text-lg text-slate-600 dark:text-gray-400 max-w-2xl mx-auto">
                         Estamos listos para escalar la seguridad de tu empresa al siguiente nivel.
                     </p>
                 </div>
@@ -56,7 +41,7 @@ export default function ContactSection() {
                     <div className="lg:col-span-5 space-y-4">
 
                         {/* tarjeta principal */}
-                        <div className="bg-slate-900/50 backdrop-blur-md p-8 rounded-3xl border border-white/10 hover:border-blue-500/30 transition-colors group relative overflow-hidden">
+                        <div className="bg-slate-900 dark:bg-gray-900 backdrop-blur-md p-8 rounded-3xl border border-white/10 dark:border-gray-800 hover:border-blue-500/30 transition-all duration-300 group relative overflow-hidden">
                             <div className="absolute inset-0 bg-gradient-to-br from-blue-600/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
 
                             <h3 className="text-2xl font-bold text-white mb-6 relative z-10">Información de Contacto</h3>
@@ -67,7 +52,7 @@ export default function ContactSection() {
                                         <Phone size={20} />
                                     </div>
                                     <div>
-                                        <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold mb-1">Llámanos</p>
+                                        <p className="text-xs text-slate-400 dark:text-gray-500 uppercase tracking-wider font-semibold mb-1">Llámanos</p>
                                         <p className="text-white font-medium hover:text-blue-400 transition-colors cursor-pointer">+51 987 654 321</p>
                                     </div>
                                 </div>
@@ -77,49 +62,45 @@ export default function ContactSection() {
                                         <Mail size={20} />
                                     </div>
                                     <div>
-                                        <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold mb-1">Escríbenos</p>
-                                        <p className="text-white font-medium hover:text-emerald-400 transition-colors cursor-pointer">contacto@nosplanet.com</p>
-                                    </div>
-                                </div>
-
-                                <div className="flex items-center gap-4 group/item">
-                                    <div className="w-12 h-12 bg-purple-500/10 rounded-xl flex items-center justify-center text-purple-400 border border-purple-500/20 group-hover/item:scale-110 transition-transform">
-                                        <MapPin size={20} />
-                                    </div>
-                                    <div>
-                                        <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold mb-1">Visítanos</p>
-                                        <p className="text-white font-medium hover:text-purple-400 transition-colors cursor-pointer">San Isidro, Lima - Perú</p>
+                                        <p className="text-xs text-slate-400 dark:text-gray-500 uppercase tracking-wider font-semibold mb-1">Escríbenos</p>
+                                        <p className="text-white font-medium hover:text-emerald-400 transition-colors cursor-pointer">contacto@formapp.pe</p>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        {/* tarjeta secundaria */}
-                        <div className="bg-slate-900/50 backdrop-blur-md p-6 rounded-3xl border border-white/10 h-48 relative overflow-hidden group">
-                            {/* mapa abstracto */}
-                            <div className="absolute inset-0 opacity-30 group-hover:opacity-50 transition-opacity">
-                                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[200%] h-[200%] bg-[radial-gradient(circle_at_center,#3b82f6_0%,transparent_50%)] blur-3xl"></div>
+                        {/* Cobertura Nacional */}
+                        <div className="bg-slate-900 dark:bg-gray-900 backdrop-blur-md p-8 rounded-3xl border border-white/10 dark:border-gray-800 relative overflow-hidden group transition-all duration-300">
+                            {/* fondo decorativo de red/mapa */}
+                            <div className="absolute inset-0 opacity-20 group-hover:opacity-40 transition-opacity duration-700">
+                                <div className="absolute inset-0 bg-[radial-gradient(#3b82f6_1px,transparent_1px)] bg-[size:20px_20px]"></div>
+                                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[200%] h-[200%] bg-[radial-gradient(circle_at_center,#3b82f6_0%,transparent_60%)] blur-3xl opacity-30"></div>
                             </div>
-                            <div className="relative z-10 flex flex-col justify-end h-full">
-                                <p className="text-white font-bold text-lg">Cobertura Nacional</p>
-                                <p className="text-slate-400 text-sm">Operamos en todo el Perú</p>
+
+                            <div className="relative z-10 flex flex-col justify-center">
+                                <div className="w-12 h-12 bg-blue-500/20 rounded-xl flex items-center justify-center text-blue-400 border border-blue-500/30 mb-4 group-hover:scale-110 transition-transform duration-300">
+                                    <MapPin size={24} />
+                                </div>
+                                <h4 className="text-white font-bold text-xl mb-2 tracking-tight">Cobertura Nacional</h4>
+                                <p className="text-slate-300 dark:text-gray-300 text-sm leading-relaxed">
+                                    Digitalizamos procesos en todo el Perú. Operación <span className="text-blue-400 font-semibold">100% remota</span> con soporte presencial estratégico.
+                                </p>
                             </div>
                         </div>
-
                     </div>
 
                     {/* formulario */}
                     <div className="lg:col-span-7">
-                        <div className="bg-slate-900/80 backdrop-blur-xl p-8 md:p-10 rounded-3xl border border-white/10 shadow-2xl relative overflow-hidden">
+                        <div className="bg-white dark:bg-gray-900 backdrop-blur-xl p-8 md:p-10 rounded-3xl border border-slate-200 dark:border-gray-800 shadow-2xl relative overflow-hidden transition-colors duration-300">
                             {/* borde superior */}
                             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-blue-500 opacity-50"></div>
 
                             <form onSubmit={handleSubmit} className="space-y-6 relative z-10">
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                                     <div className="space-y-2">
-                                        <label htmlFor="name" className="text-xs font-semibold text-slate-400 ml-1 uppercase tracking-wide">Nombre</label>
+                                        <label htmlFor="name" className="text-xs font-semibold text-slate-500 dark:text-slate-400 ml-1 uppercase tracking-wide">Nombre</label>
                                         <div className={`relative group transition-all duration-300 ${focusedField === 'name' ? 'scale-[1.02]' : ''}`}>
-                                            <div className="absolute left-4 top-3.5 text-slate-500 group-focus-within:text-blue-400 transition-colors">
+                                            <div className="absolute left-4 top-3.5 text-slate-400 dark:text-slate-500 group-focus-within:text-blue-500 transition-colors">
                                                 <User size={18} />
                                             </div>
                                             <input
@@ -127,16 +108,16 @@ export default function ContactSection() {
                                                 id="name"
                                                 onFocus={() => setFocusedField('name')}
                                                 onBlur={() => setFocusedField(null)}
-                                                className="w-full pl-12 pr-4 py-3 bg-slate-950/50 border border-slate-800 rounded-xl focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none transition-all placeholder:text-slate-600 text-white"
+                                                className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none transition-all placeholder:text-slate-400 dark:text-slate-600 text-slate-900 dark:text-white"
                                                 placeholder="Tu nombre"
                                                 required
                                             />
                                         </div>
                                     </div>
                                     <div className="space-y-2">
-                                        <label htmlFor="company" className="text-xs font-semibold text-slate-400 ml-1 uppercase tracking-wide">Empresa</label>
+                                        <label htmlFor="company" className="text-xs font-semibold text-slate-500 dark:text-slate-400 ml-1 uppercase tracking-wide">Empresa</label>
                                         <div className={`relative group transition-all duration-300 ${focusedField === 'company' ? 'scale-[1.02]' : ''}`}>
-                                            <div className="absolute left-4 top-3.5 text-slate-500 group-focus-within:text-blue-400 transition-colors">
+                                            <div className="absolute left-4 top-3.5 text-slate-400 dark:text-slate-500 group-focus-within:text-blue-500 transition-colors">
                                                 <Building2 size={18} />
                                             </div>
                                             <input
@@ -144,7 +125,7 @@ export default function ContactSection() {
                                                 id="company"
                                                 onFocus={() => setFocusedField('company')}
                                                 onBlur={() => setFocusedField(null)}
-                                                className="w-full pl-12 pr-4 py-3 bg-slate-950/50 border border-slate-800 rounded-xl focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none transition-all placeholder:text-slate-600 text-white"
+                                                className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none transition-all placeholder:text-slate-400 dark:text-slate-600 text-slate-900 dark:text-white"
                                                 placeholder="Tu empresa"
                                             />
                                         </div>
@@ -152,9 +133,9 @@ export default function ContactSection() {
                                 </div>
 
                                 <div className="space-y-2">
-                                    <label htmlFor="email" className="text-xs font-semibold text-slate-400 ml-1 uppercase tracking-wide">Email Corporativo</label>
-                                    <div className={`relative group transition-all duration-300 ${focusedField === 'email' ? 'scale-[1.02]' : ''}`}>
-                                        <div className="absolute left-4 top-3.5 text-slate-500 group-focus-within:text-blue-400 transition-colors">
+                                    <label htmlFor="email" className="text-xs font-semibold text-slate-500 dark:text-gray-400 ml-1 uppercase tracking-wide">Email Corporativo</label>
+                                    <div className={`relative group transition-all duration-300 ${focusedField === 'email' ? 'scale-[1.01]' : ''}`}>
+                                        <div className={`absolute left-4 top-3.5 transition-colors duration-300 ${focusedField === 'email' ? 'text-blue-500' : 'text-slate-400'}`}>
                                             <Mail size={18} />
                                         </div>
                                         <input
@@ -162,17 +143,17 @@ export default function ContactSection() {
                                             id="email"
                                             onFocus={() => setFocusedField('email')}
                                             onBlur={() => setFocusedField(null)}
-                                            className="w-full pl-12 pr-4 py-3 bg-slate-950/50 border border-slate-800 rounded-xl focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none transition-all placeholder:text-slate-600 text-white"
-                                            placeholder="nombre@nosplanet.com"
+                                            className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-gray-800/50 border border-slate-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 outline-none transition-all placeholder:text-slate-400 dark:text-gray-500 text-slate-900 dark:text-white"
+                                            placeholder="nombre@empresa.com"
                                             required
                                         />
                                     </div>
                                 </div>
 
                                 <div className="space-y-2">
-                                    <label htmlFor="message" className="text-xs font-semibold text-slate-400 ml-1 uppercase tracking-wide">Mensaje</label>
-                                    <div className={`relative group transition-all duration-300 ${focusedField === 'message' ? 'scale-[1.02]' : ''}`}>
-                                        <div className="absolute left-4 top-3.5 text-slate-500 group-focus-within:text-blue-400 transition-colors">
+                                    <label htmlFor="message" className="text-xs font-semibold text-slate-500 dark:text-gray-400 ml-1 uppercase tracking-wide">Mensaje</label>
+                                    <div className={`relative group transition-all duration-300 ${focusedField === 'message' ? 'scale-[1.01]' : ''}`}>
+                                        <div className={`absolute left-4 top-3.5 transition-colors duration-300 ${focusedField === 'message' ? 'text-blue-500' : 'text-slate-400'}`}>
                                             <MessageSquare size={18} />
                                         </div>
                                         <textarea
@@ -180,7 +161,7 @@ export default function ContactSection() {
                                             rows={4}
                                             onFocus={() => setFocusedField('message')}
                                             onBlur={() => setFocusedField(null)}
-                                            className="w-full pl-12 pr-4 py-3 bg-slate-950/50 border border-slate-800 rounded-xl focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none transition-all placeholder:text-slate-600 text-white resize-none"
+                                            className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-gray-800/50 border border-slate-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 outline-none transition-all placeholder:text-slate-400 dark:text-white resize-none"
                                             placeholder="Detalles sobre tu proyecto..."
                                             required
                                         ></textarea>

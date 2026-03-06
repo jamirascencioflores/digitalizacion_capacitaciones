@@ -29,16 +29,15 @@ export default function Hero() {
                     {/* texto principal */}
                     <div className="text-left animate-in fade-in slide-in-from-left-8 duration-700">
                         {/* título */}
-                        <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight text-white mb-6 leading-tight">
-                            Seguridad SST <br />
+                        <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight text-white mb-6 leading-tight">
                             <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-indigo-400">
-                                Digital e Inteligente
+                                Gestión Digital de Capacitaciones
                             </span>
                         </h1>
 
                         {/* descripción */}
                         <p className="mt-4 text-xl text-slate-300 mb-8 leading-relaxed max-w-lg">
-                            Olvídate del papel. Centraliza capacitaciones, asistencia y cumplimiento normativo en una plataforma empresarial robusta.
+                            Gestiona tus registros de forma digital y genera reportes automáticos al instante. Asegura el cumplimiento total de tus capacitaciones con reportes listos para exportar en Excel y PDF.
                         </p>
 
                         {/* botones */}

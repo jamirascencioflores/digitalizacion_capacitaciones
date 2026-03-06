@@ -37,7 +37,7 @@ export default function BenefitsSection() {
                             <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">Sin Complicaciones</span>
                         </h2>
                         <p className="text-lg text-slate-400 leading-relaxed max-w-lg mb-8 md:mb-0">
-                            Olvídate de las hojas de cálculo y el papeleo. Lleva tu gestión de seguridad al siglo XXI.
+                            Centraliza toda la información de tus trabajadores y sus capacitaciones. Una plataforma intuitiva diseñada para el control operativo real.
                         </p>
                     </div>
 
@@ -82,7 +82,7 @@ export default function BenefitsSection() {
 
                             <h3 className="text-3xl font-bold text-white mb-4">Recupera tu Tiempo</h3>
                             <p className="text-slate-400 text-lg leading-relaxed mb-8 flex-grow">
-                                Nuestros clientes reportan una reducción del <span className="text-white font-bold">40%</span> en tareas administrativas. Automatiza lo aburrido y enfócate en prevenir accidentes.
+                                Nuestros clientes reportan una reducción del <span className="text-white font-bold">50%</span> en tareas administrativas. Automatiza la recolección de firmas y enfócate en la estrategia, no en el trámite.
                             </p>
 
                             {/* gráfico pequeño */}
@@ -113,9 +113,9 @@ export default function BenefitsSection() {
                                 <ShieldCheck size={32} />
                             </div>
                             <div>
-                                <h3 className="text-2xl font-bold text-white mb-2">Blindaje Legal Sunafil</h3>
+                                <h3 className="text-2xl font-bold text-white mb-2">Veracidad Informativa</h3>
                                 <p className="text-slate-400">
-                                    Formatos actualizados automáticamente a la normativa vigente. Evita multas por errores de papeleo.
+                                    Con firmas digitales y evidencias fotográficas, tus registros tienen un respaldo innegable ante cualquier revisión interna o externa.
                                 </p>
                             </div>
                         </div>

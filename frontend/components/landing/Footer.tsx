@@ -21,7 +21,7 @@ export default function Footer() {
                             <span className="text-xl font-bold">FORMAPP</span>
                         </div>
                         <p className="text-sm leading-relaxed text-gray-400">
-                            Transformamos la gestion de seguridad y salud en el trabajo con tecnologia inteligente. Simplificamos procesos para salvar vidas.
+                            Transformamos la gestión de cumplimiento y auditoría con tecnología inteligente. Simplificamos tus procesos para que siempre estés listo ante cualquier inspección.
                         </p>
                         <div className="flex gap-4 pt-2">
                             <a href="#" className="hover:text-blue-500 transition-colors"><Facebook size={20} /></a>
@@ -57,17 +57,13 @@ export default function Footer() {
                     <div>
                         <h3 className="text-white font-semibold mb-6">Contacto</h3>
                         <ul className="space-y-4 text-sm">
-                            <li className="flex items-start gap-3">
-                                <MapPin size={18} className="text-blue-500 mt-0.5 shrink-0" />
-                                <span>Av. Principal 123, Centro Empresarial, Lima, Perú</span>
-                            </li>
                             <li className="flex items-center gap-3">
                                 <Phone size={18} className="text-blue-500 shrink-0" />
-                                <span>+51 1 234 5678</span>
+                                <span>+51 987 654 321</span>
                             </li>
                             <li className="flex items-center gap-3">
                                 <Mail size={18} className="text-blue-500 shrink-0" />
-                                <span>contacto@nosplanet.com</span>
+                                <span>contacto@formapp.pe</span>
                             </li>
                         </ul>
                     </div>
@@ -75,9 +71,9 @@ export default function Footer() {
 
                 {/* barra inferior */}
                 <div className="border-t border-gray-800 pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-gray-500">
-                    <p>© {currentYear} Nos Planét. Todos los derechos reservados.</p>
+                    <p>© {currentYear} FORMAPP. Todos los derechos reservados.</p>
                     <div className="flex gap-6">
-                        <span>Desarrollado con ❤️ por el equipo de Nos Planét</span>
+                        <span>Desarrollado con ❤️ por el equipo de FORMAPP</span>
                     </div>
                 </div>
             </div>

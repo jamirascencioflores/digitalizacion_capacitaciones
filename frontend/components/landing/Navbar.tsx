@@ -3,8 +3,9 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { ShieldCheck, LogIn, Menu, X, Home, Users, Briefcase, Mail, Handshake, TrendingUp } from 'lucide-react';
+import { ShieldCheck, LogIn, Menu, X, Home, Users, Briefcase, Mail, Handshake, TrendingUp, Sun, Moon } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import { useTheme } from 'next-themes';
 
 // barra de navegación
 export default function Navbar() {
@@ -12,6 +13,12 @@ export default function Navbar() {
     const [isOpen, setIsOpen] = useState(false);
     const [isScrolled, setIsScrolled] = useState(false);
     const [isLoggingIn, setIsLoggingIn] = useState(false);
+    const { theme, setTheme } = useTheme();
+    const [mounted, setMounted] = useState(false);
+
+    useEffect(() => {
+        setMounted(true);
+    }, []);
 
     // detectar desplazamiento
     useEffect(() => {
@@ -26,10 +33,10 @@ export default function Navbar() {
 
     // estilos dinámicos
     const navBackground = isScrolled
-        ? 'bg-white/90 backdrop-blur-md border-b border-gray-100 shadow-sm'
+        ? 'bg-white/90 dark:bg-gray-900/90 backdrop-blur-md border-b border-gray-100 dark:border-gray-800 shadow-sm'
         : 'bg-transparent border-transparent';
 
-    const textColor = isScrolled ? 'text-slate-600' : 'text-white/90';
+    const textColor = isScrolled ? 'text-slate-600 dark:text-gray-300' : 'text-white/90';
     const hoverColor = isScrolled ? 'hover:text-blue-600' : 'hover:text-white';
     const iconColor = isScrolled ? 'text-slate-400 group-hover:text-blue-600' : 'text-blue-200 group-hover:text-white';
 
@@ -83,7 +90,16 @@ export default function Navbar() {
                             </Link>
                         </nav>
 
-                        <div className={`h-6 w-px ${isScrolled ? 'bg-slate-200' : 'bg-white/20'}`}></div>
+                        <div className={`h-6 w-px ${isScrolled ? 'bg-slate-200 dark:bg-slate-700' : 'bg-white/20'}`}></div>
+
+                        {/* Theme Toggle */}
+                        <button
+                            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                            className={`p-2 rounded-lg transition-all ${isScrolled ? 'hover:bg-gray-100 dark:hover:bg-gray-800 text-slate-600 dark:text-gray-300' : 'hover:bg-white/10 text-white'}`}
+                            aria-label="Cambiar tema"
+                        >
+                            {mounted && (theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />)}
+                        </button>
 
                         <button
                             onClick={() => {
@@ -121,24 +137,32 @@ export default function Navbar() {
 
             {/* menú desplegable */}
             {isOpen && (
-                <div className="md:hidden absolute top-full left-0 right-0 bg-white border-t border-gray-100 animate-in slide-in-from-top-5 shadow-xl z-40">
+                <div className="md:hidden absolute top-full left-0 right-0 bg-white dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800 animate-in slide-in-from-top-5 shadow-xl z-40 transition-colors duration-300">
                     <div className="px-4 pt-2 pb-6 space-y-2">
                         <nav className="flex flex-col gap-1 mb-4">
-                            <Link href="/#inicio" onClick={() => setIsOpen(false)} className="flex items-center gap-3 p-3 text-slate-600 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition-colors">
+                            <Link href="/#inicio" onClick={() => setIsOpen(false)} className="flex items-center gap-3 p-3 text-slate-600 dark:text-gray-300 hover:bg-blue-50 dark:hover:bg-gray-800 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg transition-colors">
                                 <Home size={18} /> <span>Inicio</span>
                             </Link>
-                            <Link href="/#nosotros" onClick={() => setIsOpen(false)} className="flex items-center gap-3 p-3 text-slate-600 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition-colors">
+                            <Link href="/#nosotros" onClick={() => setIsOpen(false)} className="flex items-center gap-3 p-3 text-slate-600 dark:text-gray-300 hover:bg-blue-50 dark:hover:bg-gray-800 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg transition-colors">
                                 <Users size={18} /> <span>Nosotros</span>
                             </Link>
-                            <Link href="/#servicios" onClick={() => setIsOpen(false)} className="flex items-center gap-3 p-3 text-slate-600 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition-colors">
+                            <Link href="/#servicios" onClick={() => setIsOpen(false)} className="flex items-center gap-3 p-3 text-slate-600 dark:text-gray-300 hover:bg-blue-50 dark:hover:bg-gray-800 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg transition-colors">
                                 <Briefcase size={18} /> <span>Servicios</span>
                             </Link>
-                            <Link href="/#beneficios" onClick={() => setIsOpen(false)} className="flex items-center gap-3 p-3 text-slate-600 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition-colors">
+                            <Link href="/#beneficios" onClick={() => setIsOpen(false)} className="flex items-center gap-3 p-3 text-slate-600 dark:text-gray-300 hover:bg-blue-50 dark:hover:bg-gray-800 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg transition-colors">
                                 <TrendingUp size={18} /> <span>Beneficios</span>
                             </Link>
-                            <Link href="/#contacto" onClick={() => setIsOpen(false)} className="flex items-center gap-3 p-3 text-slate-600 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition-colors">
+                            <Link href="/#contacto" onClick={() => setIsOpen(false)} className="flex items-center gap-3 p-3 text-slate-600 dark:text-gray-300 hover:bg-blue-50 dark:hover:bg-gray-800 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg transition-colors">
                                 <Mail size={18} /> <span>Contacto</span>
                             </Link>
+
+                            {/* Theme Toggle Móvil */}
+                            <button
+                                onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                                className="flex items-center gap-3 p-3 text-slate-600 dark:text-gray-300 hover:bg-blue-50 dark:hover:bg-gray-800 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg transition-colors"
+                            >
+                                {mounted && (theme === 'dark' ? <><Sun size={18} /> <span>Modo Claro</span></> : <><Moon size={18} /> <span>Modo Noche</span></>)}
+                            </button>
                         </nav>
                         <button
                             onClick={() => {

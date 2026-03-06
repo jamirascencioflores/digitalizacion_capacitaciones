@@ -11,12 +11,12 @@ import Footer from '@/components/landing/Footer';
 export default function Home() {
   console.log('Page Rebuild Trigger');
   return (
-    <main className="min-h-screen bg-white overflow-x-hidden">
+    <main className="min-h-screen bg-white dark:bg-gray-950 overflow-x-hidden transition-colors duration-300">
       {/* navegación */}
       <Navbar />
 
       {/* contenedor de fondo */}
-      <div className="relative overflow-hidden bg-slate-50">
+      <div className="relative overflow-hidden bg-slate-50 dark:bg-gray-900/50">
         {/* patrón de fondo */}
         <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]"></div>
 

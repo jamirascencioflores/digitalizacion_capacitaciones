@@ -197,21 +197,21 @@ export default function TrabajadoresPage() {
     const totalPaginas = Math.ceil(filtrados.length / itemsPorPagina);
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 relative pb-20">
             {/* Encabezado */}
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex flex-col md:flex-row justify-between items-center gap-4">
+            <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700 flex flex-col md:flex-row justify-between items-center gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-                        <Users className="text-blue-600" /> Maestro de Trabajadores
+                    <h1 className="text-2xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                        <Users className="text-blue-600 dark:text-blue-400" /> Maestro de Trabajadores
                     </h1>
-                    <p className="text-sm text-gray-500">Total: <b>{lista.length}</b> registros.</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Total: <b className="text-gray-700 dark:text-gray-300">{lista.length}</b> registros.</p>
                 </div>
 
                 <div className="flex gap-3 items-center">
                     {/* Botón Carga Masiva Firmas */}
                     <div className="relative">
                         <input type="file" id="masivo-upload" className="hidden" multiple accept="image/*" onChange={handleCargaMasivaFirmas} disabled={subiendoMasivo} />
-                        <label htmlFor="masivo-upload" className={`cursor-pointer bg-gray-100 text-gray-700 hover:bg-gray-200 px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition ${subiendoMasivo ? 'opacity-50' : ''}`}>
+                        <label htmlFor="masivo-upload" className={`cursor-pointer bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-slate-600 px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition ${subiendoMasivo ? 'opacity-50' : ''}`}>
                             {subiendoMasivo ? <Loader2 className="animate-spin" size={18} /> : <UploadCloud size={18} />}
                             {subiendoMasivo ? '...' : 'Subir Firmas'}
                         </label>
@@ -227,16 +227,16 @@ export default function TrabajadoresPage() {
                         </button>
 
                         {menuNuevoOpen && (
-                            <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-gray-100 z-50 animate-in fade-in zoom-in-95 duration-100">
+                            <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-slate-800 rounded-lg shadow-xl border border-gray-100 dark:border-slate-700 z-50 animate-in fade-in zoom-in-95 duration-100 overflow-hidden">
                                 <button
                                     onClick={() => { setEditingId(null); reset({ genero: 'M' }); setModalOpen(true); setMenuNuevoOpen(false); }}
-                                    className="w-full text-left px-4 py-3 hover:bg-gray-50 flex items-center gap-2 text-gray-700"
+                                    className="w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-slate-700 flex items-center gap-2 text-gray-700 dark:text-gray-300"
                                 >
                                     <Users size={16} /> Individual
                                 </button>
                                 <button
                                     onClick={() => { setModalExcelOpen(true); setMenuNuevoOpen(false); }}
-                                    className="w-full text-left px-4 py-3 hover:bg-gray-50 flex items-center gap-2 text-green-700 font-medium border-t border-gray-100"
+                                    className="w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-slate-700 flex items-center gap-2 text-green-700 dark:text-green-500 font-medium border-t border-gray-100 dark:border-slate-700"
                                 >
                                     <FileSpreadsheet size={16} /> Importar Excel
                                 </button>
@@ -248,168 +248,236 @@ export default function TrabajadoresPage() {
 
             {/* Buscador */}
             <div className="relative max-w-md">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" size={18} />
                 <input
                     type="text" placeholder="Buscar por DNI o Nombre..."
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                    className="w-full pl-10 pr-4 py-2 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 shadow-sm"
                     value={busqueda} onChange={e => setBusqueda(e.target.value)}
                 />
             </div>
 
-            {/* Tabla */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                <div className="overflow-x-auto">
-                    <table className="w-full text-sm text-left">
-                        <thead className="bg-gray-50 text-gray-600 font-bold uppercase text-xs border-b">
-                            <tr>
-                                <th className="px-6 py-3">DNI</th>
-                                <th className="px-6 py-3">Apellidos y Nombres</th>
-                                <th className="px-6 py-3">Cargo / Área</th>
-                                <th className="px-6 py-3 text-center">Firma</th>
-                                <th className="px-6 py-3 text-right">Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100">
+            {/* LISTA / TABLA */}
+            <div className="bg-gray-50/20 dark:bg-slate-800/20 md:bg-white md:dark:bg-slate-800 md:rounded-xl md:shadow-sm md:border md:border-gray-200 md:dark:border-slate-700 overflow-hidden">
+                {itemsActuales.length === 0 && !loading ? (
+                    <div className="p-8 text-center text-gray-500 dark:text-gray-400 bg-white dark:bg-slate-800 md:bg-transparent md:dark:bg-transparent rounded-xl">No se encontraron trabajadores.</div>
+                ) : (
+                    <>
+                        {/* --- VISTA MÓVIL (TARJETAS) --- */}
+                        <div className="grid grid-cols-1 gap-4 md:hidden">
                             {itemsActuales.map(t => (
-                                <tr key={t.id_trabajador} className="hover:bg-gray-50">
-                                    <td className="px-6 py-3 font-mono text-blue-600 font-bold">{t.dni}</td>
-                                    <td className="px-6 py-3 font-medium text-gray-800">{t.apellidos} {t.nombres}</td>
-                                    <td className="px-6 py-3 text-gray-500">
-                                        <div className="font-bold">{t.cargo}</div>
-                                        <div className="text-xs">{t.area}</div>
-                                        {/* Indicador visual si es EDS/CIFHS */}
-                                        {t.categoria && (
-                                            <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded ml-1 font-bold">
+                                <div key={t.id_trabajador} className="bg-white dark:bg-slate-800/90 p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 flex flex-col gap-3 relative overflow-hidden group">
+                                    <div className="flex justify-between items-start gap-2">
+                                        <div className="flex flex-col">
+                                            <span className="font-mono text-blue-600 dark:text-blue-400 font-bold text-sm bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded-md self-start mb-1 border border-blue-100 dark:border-blue-800/50">{t.dni}</span>
+                                            <h4 className="font-bold text-gray-800 dark:text-gray-100 text-base leading-tight">
+                                                {t.apellidos} {t.nombres}
+                                            </h4>
+                                        </div>
+                                        <div className="flex shrink-0">
+                                            {t.firma_url ? (
+                                                <span className="inline-flex items-center gap-1 text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/30 px-2.5 py-1 rounded-xl text-xs font-bold border border-green-100 dark:border-green-800/50 shadow-sm">
+                                                    <CheckCircle2 size={12} /> Firma
+                                                </span>
+                                            ) : (
+                                                <span className="inline-flex items-center gap-1 text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-slate-700 px-2.5 py-1 rounded-xl text-xs font-bold border border-gray-100 dark:border-slate-600">
+                                                    Sin Firma
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className="flex flex-col gap-1.5 mt-1 border-t border-gray-50 dark:border-slate-700/50 pt-3">
+                                        <div className="font-semibold text-gray-700 dark:text-gray-300 text-sm truncate">{t.cargo}</div>
+                                        <div className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-slate-700 px-2 py-1.5 rounded-lg border border-gray-100 dark:border-slate-600 inline-block self-start truncate max-w-full">
+                                            {t.area}
+                                        </div>
+                                    </div>
+                                    {t.categoria && (
+                                        <div className="mt-1">
+                                            <span className="text-[10px] bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 px-2 py-1 rounded-md font-bold uppercase tracking-wider border border-purple-200 dark:border-purple-800/50">
                                                 {t.categoria}
                                             </span>
+                                        </div>
+                                    )}
+
+                                    <div className="grid grid-cols-2 gap-2 mt-2 pt-3 border-t border-gray-50 dark:border-slate-700/50">
+                                        <button onClick={() => handleEdit(t)} className="flex items-center justify-center gap-2 p-2.5 text-amber-600 dark:text-amber-500 font-bold text-xs bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800/30 rounded-xl hover:bg-amber-100 dark:hover:bg-amber-800/50 active:scale-95 transition-all">
+                                            <Edit size={14} /> Editar
+                                        </button>
+                                        <button onClick={() => handleDelete(t.id_trabajador)} className="flex items-center justify-center gap-2 p-2.5 text-red-600 dark:text-red-500 font-bold text-xs bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800/30 rounded-xl hover:bg-red-100 dark:hover:bg-red-800/50 active:scale-95 transition-all">
+                                            <Trash2 size={14} /> Eliminar
+                                        </button>
+                                        {t.firma_url && (
+                                            <button onClick={() => handleDeleteFirma(t.id_trabajador, t.nombres)} className="col-span-2 mt-1 flex items-center justify-center gap-2 p-2 text-gray-500 dark:text-gray-400 text-xs bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-600 active:scale-95 transition-all">
+                                                <Eraser size={14} />
+                                                Borrar Firma
+                                            </button>
                                         )}
-                                    </td>
-                                    <td className="px-6 py-3 text-center">
-                                        {t.firma_url ? (
-                                            <div className="flex items-center justify-center gap-2">
-                                                <span className="inline-flex items-center gap-1 text-green-600 bg-green-50 px-2 py-1 rounded text-xs font-bold">
-                                                    <CheckCircle2 size={12} /> Sí
-                                                </span>
-                                                <button
-                                                    onClick={() => handleDeleteFirma(t.id_trabajador, t.nombres)}
-                                                    className="text-red-400 hover:text-red-600 p-1 rounded-full hover:bg-red-50 transition"
-                                                    title="Borrar firma"
-                                                >
-                                                    <Eraser size={14} />
-                                                </button>
-                                            </div>
-                                        ) : (
-                                            <span className="text-gray-300 text-xs">No</span>
-                                        )}
-                                    </td>
-                                    <td className="px-6 py-3 text-right flex justify-end gap-2">
-                                        <button onClick={() => handleEdit(t)} className="p-2 text-amber-600 bg-amber-50 rounded hover:bg-amber-100"><Edit size={16} /></button>
-                                        <button onClick={() => handleDelete(t.id_trabajador)} className="p-2 text-red-600 bg-red-50 rounded hover:bg-red-100"><Trash2 size={16} /></button>
-                                    </td>
-                                </tr>
+                                    </div>
+                                </div>
                             ))}
-                        </tbody>
-                    </table>
-                    {itemsActuales.length === 0 && !loading && <div className="p-8 text-center text-gray-500">No se encontraron trabajadores.</div>}
-                </div>
+                        </div>
+
+                        {/* --- VISTA ESCRITORIO (TABLA TRADICIONAL) --- */}
+                        <div className="overflow-x-auto hidden md:block">
+                            <table className="w-full text-sm text-left">
+                                <thead className="bg-gray-50/80 dark:bg-slate-800/80 text-gray-500 dark:text-gray-400 font-bold border-b border-gray-100 dark:border-slate-700 uppercase tracking-wider text-[11px]">
+                                    <tr>
+                                        <th className="px-6 py-4 rounded-tl-xl whitespace-nowrap">DNI</th>
+                                        <th className="px-6 py-4 whitespace-nowrap">Apellidos y Nombres</th>
+                                        <th className="px-6 py-4 whitespace-nowrap">Cargo / Área</th>
+                                        <th className="px-6 py-4 text-center whitespace-nowrap">Firma</th>
+                                        <th className="px-6 py-4 text-right rounded-tr-xl whitespace-nowrap">Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100/60 dark:divide-slate-700/60">
+                                    {itemsActuales.map(t => (
+                                        <tr key={t.id_trabajador} className="hover:bg-blue-50/30 dark:hover:bg-slate-700/40 transition-colors group">
+                                            <td className="px-6 py-4 font-mono text-blue-600 dark:text-blue-400 font-bold">{t.dni}</td>
+                                            <td className="px-6 py-4 font-bold text-gray-800 dark:text-gray-100">{t.apellidos} {t.nombres}</td>
+                                            <td className="px-6 py-4 text-gray-500 dark:text-gray-400">
+                                                <div className="font-bold text-gray-700 dark:text-gray-300">{t.cargo}</div>
+                                                <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{t.area}</div>
+                                                {/* Indicador visual si es EDS/CIFHS */}
+                                                {t.categoria && (
+                                                    <span className="text-[10px] bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 px-1.5 py-0.5 rounded mt-1 inline-block font-bold border border-purple-200 dark:border-purple-800/50">
+                                                        {t.categoria}
+                                                    </span>
+                                                )}
+                                            </td>
+                                            <td className="px-6 py-4 text-center">
+                                                {t.firma_url ? (
+                                                    <div className="flex items-center justify-center gap-2">
+                                                        <span className="inline-flex items-center gap-1 text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/30 px-2.5 py-1 rounded-xl text-xs font-bold border border-green-100 dark:border-green-800/50">
+                                                            <CheckCircle2 size={12} /> Sí
+                                                        </span>
+                                                        <button
+                                                            onClick={() => handleDeleteFirma(t.id_trabajador, t.nombres)}
+                                                            className="text-red-400 dark:text-red-500 hover:text-red-600 dark:hover:text-red-400 p-1.5 rounded-full hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
+                                                            title="Borrar firma"
+                                                        >
+                                                            <Eraser size={14} />
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-gray-300 dark:text-gray-600 text-xs font-medium bg-gray-50 dark:bg-slate-800 px-2 py-1 rounded-lg border border-gray-100 dark:border-slate-700">No</span>
+                                                )}
+                                            </td>
+                                            <td className="px-6 py-4 text-right">
+                                                <div className="flex justify-end gap-2">
+                                                    <button onClick={() => handleEdit(t)} className="p-2 text-amber-600 dark:text-amber-500 bg-white dark:bg-slate-800 border border-amber-200 dark:border-amber-800 hover:bg-amber-50 dark:hover:bg-slate-700 shadow-sm active:scale-95 transition-all rounded-xl"><Edit size={16} /></button>
+                                                    <button onClick={() => handleDelete(t.id_trabajador)} className="p-2 text-red-600 dark:text-red-500 bg-white dark:bg-slate-800 border border-red-200 dark:border-red-800 hover:bg-red-50 dark:hover:bg-slate-700 shadow-sm active:scale-95 transition-all rounded-xl"><Trash2 size={16} /></button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </>
+                )}
 
                 {/* Paginación */}
                 {filtrados.length > 0 && (
-                    <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 bg-gray-50">
-                        <span className="text-xs text-gray-500">Página {paginaActual} de {totalPaginas}</span>
+                    <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/80">
+                        <span className="text-xs text-gray-500 dark:text-gray-400">Página {paginaActual} de {totalPaginas}</span>
                         <div className="flex gap-2">
-                            <button onClick={() => setPaginaActual(p => Math.max(1, p - 1))} disabled={paginaActual === 1} className="p-2 rounded hover:bg-gray-200 disabled:opacity-50"><ChevronLeft size={16} /></button>
-                            <button onClick={() => setPaginaActual(p => Math.min(totalPaginas, p + 1))} disabled={paginaActual === totalPaginas} className="p-2 rounded hover:bg-gray-200 disabled:opacity-50"><ChevronRight size={16} /></button>
+                            <button onClick={() => setPaginaActual(p => Math.max(1, p - 1))} disabled={paginaActual === 1} className="p-2 text-gray-600 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-slate-700 disabled:opacity-50"><ChevronLeft size={16} /></button>
+                            <button onClick={() => setPaginaActual(p => Math.min(totalPaginas, p + 1))} disabled={paginaActual === totalPaginas} className="p-2 text-gray-600 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-slate-700 disabled:opacity-50"><ChevronRight size={16} /></button>
                         </div>
                     </div>
                 )}
             </div>
 
             {/* MODAL EXCEL */}
-            {modalExcelOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 animate-in fade-in zoom-in duration-200">
-                        <div className="flex justify-between items-center mb-6">
-                            <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-                                <FileSpreadsheet className="text-green-600" /> Importar Excel
-                            </h3>
-                            <button onClick={() => setModalExcelOpen(false)}><X className="text-gray-400 hover:text-gray-600" /></button>
-                        </div>
-
-                        <div className="bg-blue-50 text-blue-800 p-4 rounded-lg text-sm mb-6">
-                            <p className="font-bold mb-1">Instrucciones:</p>
-                            <ul className="list-disc pl-4 space-y-1">
-                                <li>Sube el reporte de Nisira (CSV o Excel).</li>
-                                <li>El sistema limpiará y unirá las líneas rotas automáticamente.</li>
-                                <li>Actualizará DNI, Nombres, Cargo, Área y Categoría (EDS, CIFHS).</li>
-                            </ul>
-                        </div>
-
-                        <form onSubmit={handleUploadExcel} className="space-y-4">
-                            <input type="file" required accept=".csv, .xlsx, .xls" className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
-
-                            <div className="flex justify-end gap-3 pt-4">
-                                <button type="button" onClick={() => setModalExcelOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancelar</button>
-                                <button type="submit" disabled={subiendoExcel} className="px-6 py-2 bg-green-600 text-white rounded hover:bg-green-700 font-bold flex items-center gap-2 disabled:opacity-50">
-                                    {subiendoExcel ? <Loader2 className="animate-spin" size={18} /> : <UploadCloud size={18} />}
-                                    {subiendoExcel ? "Procesando..." : "Importar Ahora"}
-                                </button>
+            {
+                modalExcelOpen && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md p-6 animate-in fade-in zoom-in duration-200 border dark:border-slate-700">
+                            <div className="flex justify-between items-center mb-6">
+                                <h3 className="text-xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                                    <FileSpreadsheet className="text-green-600 dark:text-green-500" /> Importar Excel
+                                </h3>
+                                <button onClick={() => setModalExcelOpen(false)}><X className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200" /></button>
                             </div>
-                        </form>
+
+                            <div className="bg-blue-50 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 p-4 rounded-lg text-sm mb-6 border border-blue-100 dark:border-blue-800/50">
+                                <p className="font-bold mb-1">Instrucciones:</p>
+                                <ul className="list-disc pl-4 space-y-1">
+                                    <li>Sube el reporte de Nisira (CSV o Excel).</li>
+                                    <li>El sistema limpiará y unirá las líneas rotas automáticamente.</li>
+                                    <li>Actualizará DNI, Nombres, Cargo, Área y Categoría (EDS, CIFHS).</li>
+                                </ul>
+                            </div>
+
+                            <form onSubmit={handleUploadExcel} className="space-y-4">
+                                <input type="file" required accept=".csv, .xlsx, .xls" className="block w-full text-sm text-gray-500 dark:text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-blue-50 dark:file:bg-blue-900/40 file:text-blue-700 dark:file:text-blue-400 hover:file:bg-blue-100 dark:hover:file:bg-blue-900/60" />
+
+                                <div className="flex justify-end gap-3 pt-4">
+                                    <button type="button" onClick={() => setModalExcelOpen(false)} className="px-4 py-2 text-gray-600 dark:text-gray-300 border border-transparent dark:border-slate-600 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg">Cancelar</button>
+                                    <button type="submit" disabled={subiendoExcel} className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-bold flex items-center gap-2 disabled:opacity-50">
+                                        {subiendoExcel ? <Loader2 className="animate-spin" size={18} /> : <UploadCloud size={18} />}
+                                        {subiendoExcel ? "Procesando..." : "Importar Ahora"}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* MODAL INDIVIDUAL */}
-            {modalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg p-6 animate-in fade-in zoom-in duration-200">
-                        <div className="flex justify-between items-center mb-6">
-                            <h3 className="text-xl font-bold text-gray-800">{editingId ? 'Editar' : 'Nuevo'} Trabajador</h3>
-                            <button onClick={() => setModalOpen(false)}><X className="text-gray-400 hover:text-gray-600" /></button>
-                        </div>
-                        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-                            <div className="grid grid-cols-2 gap-4">
-                                <div><label className="text-xs font-bold text-gray-700">DNI</label><input {...register("dni", { required: true })} className="w-full border rounded px-3 py-2" /></div>
-                                <div><label className="text-xs font-bold text-gray-700">Género</label><select {...register("genero")} className="w-full border rounded px-3 py-2"><option value="M">Masculino</option><option value="F">Femenino</option></select></div>
+            {
+                modalOpen && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-lg p-6 animate-in fade-in zoom-in duration-200 border dark:border-slate-700">
+                            <div className="flex justify-between items-center mb-6">
+                                <h3 className="text-xl font-bold text-gray-800 dark:text-white">{editingId ? 'Editar' : 'Nuevo'} Trabajador</h3>
+                                <button onClick={() => setModalOpen(false)}><X className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200" /></button>
                             </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div><label className="text-xs font-bold text-gray-700">Apellidos</label><input {...register("apellidos", { required: true })} className="w-full border rounded px-3 py-2" /></div>
-                                <div><label className="text-xs font-bold text-gray-700">Nombres</label><input {...register("nombres", { required: true })} className="w-full border rounded px-3 py-2" /></div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div><label className="text-xs font-bold text-gray-700">Cargo</label><input {...register("cargo")} className="w-full border rounded px-3 py-2" /></div>
-                                <div><label className="text-xs font-bold text-gray-700">Área</label><input {...register("area")} className="w-full border rounded px-3 py-2" /></div>
-                            </div>
-
-                            {/* Input Firma Individual */}
-                            <div className="bg-gray-50 p-3 rounded border border-gray-200">
-                                <label className="block text-xs font-bold text-gray-700 mb-2">Firma Digital</label>
-                                <div className="flex items-center gap-3">
-                                    <input type="hidden" {...register("firma_url")} />
-                                    <input type="file" id="firma-upload" className="hidden" accept="image/*" onChange={handleUploadFirma} />
-                                    {watch('firma_url') ? (
-                                        <div className="flex items-center gap-2 text-green-600 text-sm font-bold">
-                                            <CheckCircle2 size={18} /> Cargada
-                                            <button type="button" onClick={() => setValue('firma_url', '')} className="text-red-500 ml-2"><Trash2 size={14} /></button>
-                                        </div>
-                                    ) : (
-                                        <label htmlFor="firma-upload" className="cursor-pointer flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded hover:bg-gray-50 text-sm">
-                                            {uploadingFirma ? <Loader2 className="animate-spin" size={16} /> : <UploadCloud size={16} />}
-                                            {uploadingFirma ? "Subiendo..." : "Adjuntar"}
-                                        </label>
-                                    )}
+                            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div><label className="text-xs font-bold text-gray-700 dark:text-gray-300">DNI</label><input {...register("dni", { required: true })} className="w-full border dark:border-slate-600 bg-white dark:bg-slate-700 dark:text-white rounded-lg px-3 py-2 outline-none focus:ring-1 focus:ring-blue-500" /></div>
+                                    <div><label className="text-xs font-bold text-gray-700 dark:text-gray-300">Género</label><select {...register("genero")} className="w-full border dark:border-slate-600 bg-white dark:bg-slate-700 dark:text-white rounded-lg px-3 py-2 outline-none focus:ring-1 focus:ring-blue-500"><option value="M">Masculino</option><option value="F">Femenino</option></select></div>
                                 </div>
-                            </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div><label className="text-xs font-bold text-gray-700 dark:text-gray-300">Apellidos</label><input {...register("apellidos", { required: true })} className="w-full border dark:border-slate-600 bg-white dark:bg-slate-700 dark:text-white rounded-lg px-3 py-2 outline-none focus:ring-1 focus:ring-blue-500" /></div>
+                                    <div><label className="text-xs font-bold text-gray-700 dark:text-gray-300">Nombres</label><input {...register("nombres", { required: true })} className="w-full border dark:border-slate-600 bg-white dark:bg-slate-700 dark:text-white rounded-lg px-3 py-2 outline-none focus:ring-1 focus:ring-blue-500" /></div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div><label className="text-xs font-bold text-gray-700 dark:text-gray-300">Cargo</label><input {...register("cargo")} className="w-full border dark:border-slate-600 bg-white dark:bg-slate-700 dark:text-white rounded-lg px-3 py-2 outline-none focus:ring-1 focus:ring-blue-500" /></div>
+                                    <div><label className="text-xs font-bold text-gray-700 dark:text-gray-300">Área</label><input {...register("area")} className="w-full border dark:border-slate-600 bg-white dark:bg-slate-700 dark:text-white rounded-lg px-3 py-2 outline-none focus:ring-1 focus:ring-blue-500" /></div>
+                                </div>
 
-                            <div className="pt-4 flex justify-end gap-3">
-                                <button type="button" onClick={() => setModalOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancelar</button>
-                                <button type="submit" className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-bold flex items-center gap-2"><Save size={18} /> Guardar</button>
-                            </div>
-                        </form>
+                                {/* Input Firma Individual */}
+                                <div className="bg-gray-50 dark:bg-slate-700/50 p-3 rounded-lg border border-gray-200 dark:border-slate-600 text-gray-800 dark:text-gray-100">
+                                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-2">Firma Digital</label>
+                                    <div className="flex items-center gap-3">
+                                        <input type="hidden" {...register("firma_url")} />
+                                        <input type="file" id="firma-upload" className="hidden" accept="image/*" onChange={handleUploadFirma} />
+                                        {watch('firma_url') ? (
+                                            <div className="flex items-center gap-2 text-green-600 dark:text-green-400 text-sm font-bold">
+                                                <CheckCircle2 size={18} /> Cargada
+                                                <button type="button" onClick={() => setValue('firma_url', '')} className="text-red-500 dark:text-red-400 ml-2"><Trash2 size={14} /></button>
+                                            </div>
+                                        ) : (
+                                            <label htmlFor="firma-upload" className="cursor-pointer flex items-center gap-2 px-3 py-2 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700 text-sm">
+                                                {uploadingFirma ? <Loader2 className="animate-spin" size={16} /> : <UploadCloud size={16} />}
+                                                {uploadingFirma ? "Subiendo..." : "Adjuntar"}
+                                            </label>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="pt-4 flex justify-end gap-3">
+                                    <button type="button" onClick={() => setModalOpen(false)} className="px-4 py-2 text-gray-600 dark:text-gray-300 border border-transparent dark:border-slate-600 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg">Cancelar</button>
+                                    <button type="submit" className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold flex items-center gap-2"><Save size={18} /> Guardar</button>
+                                </div>
+                            </form>
+                        </div>
                     </div>
-                </div>
-            )}
+                )
+            }
         </div>
     );
 }

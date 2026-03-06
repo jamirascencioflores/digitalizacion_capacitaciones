@@ -10,34 +10,34 @@ export default function Features() {
 
     const features = [
         {
-            icon: <ScanFace className="w-8 h-8 text-blue-600" />,
-            title: "Biometría Avanzada",
-            desc: "Autenticación facial y dactilar para validar la identidad de cada trabajador en tiempo real."
-        },
-        {
             icon: <FileSpreadsheet className="w-8 h-8 text-green-600" />,
-            title: "Reportes Auditables",
-            desc: "Generación automática de excel y pdf listos para sunafil, sin errores manuales."
+            title: "Reportes Excel/PDF",
+            desc: "Exporta tus actas de capacitación y registros de asistencia en formatos oficiales listos para auditorías."
         },
         {
-            icon: <ShieldCheck className="w-8 h-8 text-purple-600" />,
-            title: "Evidencia Inmutable",
-            desc: "Respaldos fotográficos y geolocalización en cada registro para máxima seguridad legal."
+            icon: <ShieldCheck className="w-8 h-8 text-blue-600" />,
+            title: "Cumplimiento Normativo",
+            desc: "Asegura que todos tus registros cumplan con los estándares exigidos por la ley de seguridad y salud en el trabajo."
+        },
+        {
+            icon: <ScanFace className="w-8 h-8 text-purple-600" />,
+            title: "Firmas Digitales",
+            desc: "Recopila las firmas de los trabajadores de forma digital, eliminando la necesidad de imprimir y archivar documentos."
         },
         {
             icon: <Zap className="w-8 h-8 text-yellow-500" />,
-            title: "Cero Papel",
-            desc: "Elimina los archivos físicos. Ahorra costos y contribuye con el medio ambiente."
+            title: "Historial de Registros",
+            desc: "Accede rápidamente a cualquier capacitación pasada con un sistema de búsqueda y filtrado inteligente."
         },
         {
             icon: <Cloud className="w-8 h-8 text-cyan-500" />,
-            title: "Cloud 24/7",
-            desc: "Acceso a tu información desde cualquier lugar y dispositivo con alta disponibilidad."
+            title: "Base de Trabajadores",
+            desc: "Mantén actualizado tu maestro de trabajadores y vincula sus asistencias automáticamente en cada charla."
         },
         {
             icon: <Lock className="w-8 h-8 text-red-500" />,
-            title: "Encriptación Bancaria",
-            desc: "Tus datos viajan y se almacenan seguros con nuestros protocolos de ciberseguridad."
+            title: "Respaldo y Seguridad",
+            desc: "Toda tu información se encuentra respaldada de forma segura en la nube, protegida contra pérdidas físicas."
         }
     ];
 
@@ -52,16 +52,16 @@ export default function Features() {
     // desplazamiento automático (opcional)
 
     return (
-        <section className="py-24 bg-white overflow-hidden">
+        <section className="py-24 bg-white dark:bg-gray-950 transition-colors duration-300 overflow-hidden">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
 
                 {/* encabezado */}
                 <div className="text-center max-w-3xl mx-auto mb-20">
-                    <h2 className="text-3xl md:text-5xl font-bold text-slate-900 mb-6 tracking-tight">
-                        Todo lo que necesitas para <span className="text-blue-600">auditorías exitosas</span>
+                    <h2 className="text-3xl md:text-5xl font-bold text-slate-900 dark:text-white mb-6 tracking-tight">
+                        Optimiza tu <span className="text-blue-600">Gestión de Cumplimiento</span>
                     </h2>
-                    <p className="text-lg md:text-xl text-slate-600 max-w-2xl mx-auto">
-                        Diseñado específicamente para cumplir con la normativa y facilitar la vida de los prevencionistas.
+                    <p className="text-lg md:text-xl text-slate-600 dark:text-gray-400 max-w-2xl mx-auto">
+                        Digitalizamos todo el flujo de capacitación, desde la firma del trabajador hasta el reporte final consolidado.
                     </p>
                 </div>
 
@@ -74,7 +74,7 @@ export default function Features() {
                             <button
                                 key={idx}
                                 onClick={() => setCurrentIndex(idx)}
-                                className={`h-2 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-8 bg-blue-600' : 'w-2 bg-slate-200 hover:bg-blue-300'
+                                className={`h-2 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-8 bg-blue-600' : 'w-2 bg-slate-200 dark:bg-gray-800 hover:bg-blue-300'
                                     }`}
                                 aria-label={`Ir a diapositiva ${idx + 1}`}
                             />
@@ -84,7 +84,7 @@ export default function Features() {
                     {/* botón anterior */}
                     <button
                         onClick={prevSlide}
-                        className="absolute left-2 top-0 md:top-1/2 md:-translate-y-1/2 md:left-8 z-50 p-4 rounded-full bg-white text-slate-800 shadow-xl border border-slate-100 hover:scale-110 hover:text-blue-600 transition-all duration-300 group"
+                        className="absolute left-2 top-0 md:top-1/2 md:-translate-y-1/2 md:left-8 z-50 p-4 rounded-full bg-white dark:bg-gray-800 text-slate-800 dark:text-gray-200 shadow-xl border border-slate-100 dark:border-gray-700 hover:scale-110 hover:text-blue-600 transition-all duration-300 group"
                         aria-label="Anterior"
                     >
                         <ChevronLeft size={32} className="group-hover:-translate-x-1 transition-transform" />
@@ -93,7 +93,7 @@ export default function Features() {
                     {/* botón siguiente */}
                     <button
                         onClick={nextSlide}
-                        className="absolute right-2 top-0 md:top-1/2 md:-translate-y-1/2 md:right-8 z-50 p-4 rounded-full bg-white text-slate-800 shadow-xl border border-slate-100 hover:scale-110 hover:text-blue-600 transition-all duration-300 group"
+                        className="absolute right-2 top-0 md:top-1/2 md:-translate-y-1/2 md:right-8 z-50 p-4 rounded-full bg-white dark:bg-gray-800 text-slate-800 dark:text-gray-200 shadow-xl border border-slate-100 dark:border-gray-700 hover:scale-110 hover:text-blue-600 transition-all duration-300 group"
                         aria-label="Siguiente"
                     >
                         <ChevronRight size={32} className="group-hover:translate-x-1 transition-transform" />
@@ -141,7 +141,7 @@ export default function Features() {
                                 >
                                     <div className={`h-[380px] p-8 rounded-[2rem] border transition-all duration-500 flex flex-col justify-center relative overflow-hidden group
                                         ${isCenter
-                                            ? 'bg-white shadow-[0_20px_50px_rgba(30,58,138,0.15)] border-blue-100' // central: blanco
+                                            ? 'bg-white dark:bg-gray-800 shadow-[0_20px_50px_rgba(30,58,138,0.15)] border-blue-100 dark:border-gray-700' // central: blanco/gris oscuro
                                             : 'bg-blue-600 border-blue-500 shadow-none' // laterales: azul
                                         }`}
                                     >
@@ -149,7 +149,7 @@ export default function Features() {
                                         {!isCenter && <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none" />}
 
                                         <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-6 shadow-sm transition-colors duration-300
-                                            ${isCenter ? 'bg-blue-50 text-blue-600' : 'bg-white/20 text-white'}
+                                            ${isCenter ? 'bg-blue-50 dark:bg-gray-900/50 text-blue-600' : 'bg-white/20 text-white'}
                                         `}>
                                             {/* icono */}
                                             <div className={isCenter ? '' : 'text-white'}>
@@ -157,17 +157,17 @@ export default function Features() {
                                             </div>
                                         </div>
 
-                                        <h3 className={`text-2xl font-bold mb-4 transition-colors duration-300 ${isCenter ? 'text-slate-900' : 'text-white'}`}>
+                                        <h3 className={`text-2xl font-bold mb-4 transition-colors duration-300 ${isCenter ? 'text-slate-900 dark:text-white' : 'text-white'}`}>
                                             {item.title}
                                         </h3>
 
-                                        <p className={`text-sm leading-relaxed transition-colors duration-300 ${isCenter ? 'text-slate-600' : 'text-blue-100'}`}>
+                                        <p className={`text-sm leading-relaxed transition-colors duration-300 ${isCenter ? 'text-slate-600 dark:text-gray-400' : 'text-blue-100'}`}>
                                             {item.desc}
                                         </p>
 
                                         {/* botón central */}
                                         {isCenter && (
-                                            <div className="mt-6 w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity translate-y-2 group-hover:translate-y-0 duration-300">
+                                            <div className="mt-6 w-8 h-8 rounded-full bg-blue-50 dark:bg-gray-700 flex items-center justify-center text-blue-600 dark:text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity translate-y-2 group-hover:translate-y-0 duration-300">
                                                 <ChevronRight size={16} />
                                             </div>
                                         )}

@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTheme } from 'next-themes';
 import api from '@/services/api';
 import {
     ArrowLeft, FileSpreadsheet, AlertCircle, ChevronDown, BarChart3, Filter
@@ -47,6 +48,7 @@ export default function GestionPage() {
     const router = useRouter();
     const [stats, setStats] = useState<AvanceReporte[]>([]);
     const [loading, setLoading] = useState(true);
+    const { theme } = useTheme();
 
     // Filtros
     const [selectedArea, setSelectedArea] = useState<string>('Todos');
@@ -201,12 +203,12 @@ export default function GestionPage() {
             {/* ENCABEZADO */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div className="flex items-center gap-4">
-                    <button onClick={() => router.back()} className="p-2 hover:bg-gray-200 rounded-full transition">
-                        <ArrowLeft className="text-gray-600" />
+                    <button onClick={() => router.back()} className="p-2 hover:bg-gray-200 dark:hover:bg-slate-800 rounded-full transition">
+                        <ArrowLeft className="text-gray-600 dark:text-gray-400" />
                     </button>
                     <div>
-                        <h1 className="text-2xl font-bold text-gray-900">Gestión de Cumplimiento</h1>
-                        <p className="text-sm text-gray-500">Plan Anual vs. Ejecución Real</p>
+                        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Gestión de Cumplimiento</h1>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">Plan Anual vs. Ejecución Real</p>
                     </div>
                 </div>
                 <button
@@ -220,13 +222,13 @@ export default function GestionPage() {
 
             {/* ZONA DE CARGA */}
             {showUpload && (
-                <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 animate-fadeIn">
+                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6 animate-fadeIn">
                     <form onSubmit={handleUpload} className="flex gap-4 items-center">
                         <input
                             type="file"
                             accept=".xlsx, .xls"
                             onChange={(e) => setFile(e.target.files?.[0] || null)}
-                            className="block w-full text-sm text-blue-900 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200"
+                            className="block w-full text-sm text-blue-900 dark:text-blue-100 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-100 dark:file:bg-blue-800 file:text-blue-700 dark:file:text-blue-200 hover:file:bg-blue-200 dark:hover:file:bg-blue-700"
                         />
                         <button type="submit" disabled={!file || uploading} className="px-6 py-2 bg-green-600 text-white rounded-lg font-bold shadow hover:bg-green-700">
                             {uploading ? '...' : 'Procesar'}
@@ -240,14 +242,14 @@ export default function GestionPage() {
 
                 {/* COLUMNA IZQUIERDA */}
                 <div className="lg:col-span-1 space-y-4">
-                    <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200">
-                        <label className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                    <div className="bg-white dark:bg-slate-800 p-5 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700 transition-colors">
+                        <label className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-2">
                             <Filter size={16} /> Filtrar Vista:
                         </label>
                         <select
                             value={selectedArea}
                             onChange={(e) => setSelectedArea(e.target.value)}
-                            className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                            className="w-full p-2 border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-colors"
                         >
                             {uniqueAreas.map(area => (
                                 <option key={area} value={area}>{area}</option>
@@ -256,20 +258,20 @@ export default function GestionPage() {
 
                         <div className="mt-6 space-y-2">
                             <div className="flex justify-between text-sm">
-                                <span className="text-gray-500">
+                                <span className="text-gray-500 dark:text-gray-400">
                                     {selectedArea === 'Todos' ? 'Áreas Monitoreadas:' : 'Temas a cumplir:'}
                                 </span>
-                                <span className="font-bold">{chartData.length}</span>
+                                <span className="font-bold dark:text-white">{chartData.length}</span>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 {/* COLUMNA DERECHA: GRÁFICO INTELIGENTE */}
-                <div className="lg:col-span-2 bg-white p-5 rounded-xl shadow-sm border border-gray-200">
+                <div className="lg:col-span-2 bg-white dark:bg-slate-800 p-5 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700 transition-colors">
                     <div className="flex items-center gap-2 mb-4">
-                        <BarChart3 className="text-blue-600" />
-                        <h3 className="font-bold text-gray-800">
+                        <BarChart3 className="text-blue-600 dark:text-blue-400" />
+                        <h3 className="font-bold text-gray-800 dark:text-gray-100">
                             {selectedArea === 'Todos' ? 'Resumen General por Áreas' : `Detalle de Temas: ${selectedArea}`}
                         </h3>
                     </div>
@@ -293,7 +295,7 @@ export default function GestionPage() {
                                             const item = chartData.find(d => d.name === payload.value);
                                             const isExternal = item?.tipo === 'EXTERNO';
                                             return (
-                                                <text x={x - 10} y={y + 4} textAnchor="end" fill={isExternal ? "#2563eb" : "#374151"} fontSize={11} fontWeight={isExternal ? "bold" : "normal"}>
+                                                <text x={x - 10} y={y + 4} textAnchor="end" fill={isExternal ? (theme === 'dark' ? "#60a5fa" : "#2563eb") : (theme === 'dark' ? "#cbd5e1" : "#374151")} fontSize={11} fontWeight={isExternal ? "bold" : "normal"}>
                                                     {payload.value.substring(0, 25)}{payload.value.length > 25 ? '...' : ''}
                                                 </text>
                                             );
@@ -301,8 +303,8 @@ export default function GestionPage() {
                                         interval={0}
                                     />
                                     <Tooltip
-                                        contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
-                                        cursor={{ fill: '#f9fafb' }}
+                                        contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', backgroundColor: theme === 'dark' ? '#1e293b' : '#fff' }}
+                                        cursor={{ fill: theme === 'dark' ? '#334155' : '#f9fafb' }}
                                         // CORRECCIÓN: Agregamos '?' a payload para hacerlo opcional, igual que en la librería
                                         formatter={(
                                             value: number | string | undefined,
@@ -320,11 +322,11 @@ export default function GestionPage() {
                                             }
                                             return [val, String(name)];
                                         }}
-                                        labelStyle={{ fontWeight: 'bold', color: '#1f2937' }}
+                                        labelStyle={{ fontWeight: 'bold', color: theme === 'dark' ? '#f8fafc' : '#1f2937' }}
                                     />
-                                    <Legend verticalAlign="top" height={36} />
+                                    <Legend verticalAlign="top" height={36} wrapperStyle={{ color: theme === 'dark' ? '#cbd5e1' : '#374151' }} />
 
-                                    <Bar dataKey="meta" name="meta" stackId="a" fill="#f3f4f6" radius={[0, 4, 4, 0]} barSize={20} />
+                                    <Bar dataKey="meta" name="meta" stackId="a" fill={theme === 'dark' ? '#475569' : '#f3f4f6'} radius={[0, 4, 4, 0]} barSize={20} />
 
                                     <Bar dataKey="real" name="real" stackId="b" radius={[0, 4, 4, 0]} barSize={20}>
                                         {chartData.map((entry, index) => (
@@ -343,12 +345,12 @@ export default function GestionPage() {
 
             {/* LISTA DETALLADA (ABAJO) - SIEMPRE MUESTRA LOS TEMAS FILTRADOS */}
             <div className="space-y-4">
-                <h3 className="font-bold text-gray-800 text-lg mt-8">
+                <h3 className="font-bold text-gray-800 dark:text-gray-100 text-lg mt-8">
                     {selectedArea === 'Todos' ? 'Listado Completo de Actividades' : `Actividades para: ${selectedArea}`}
                 </h3>
 
                 {filteredStats.map((item) => (
-                    <div key={item.id_plan} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition">
+                    <div key={item.id_plan} className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition">
                         <div className="p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
                             <div className="flex-1">
                                 <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -356,18 +358,18 @@ export default function GestionPage() {
                                         <span key={i} className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide border 
                                             ${a.trim() === selectedArea
                                                 ? 'bg-blue-600 text-white border-blue-600'
-                                                : 'bg-blue-50 text-blue-700 border-blue-100'
+                                                : 'bg-blue-50 text-blue-700 border-blue-100 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800'
                                             }`}>
                                             {a.trim()}
                                         </span>
                                     ))}
-                                    <span className="text-xs text-gray-400 font-medium ml-2">{item.mes}</span>
+                                    <span className="text-xs text-gray-400 dark:text-gray-500 font-medium ml-2">{item.mes}</span>
                                 </div>
-                                <h4 className="font-bold text-gray-800 text-lg">{item.tema}</h4>
-                                <p className="text-xs text-gray-500 italic mb-2">{item.objetivo}</p>
+                                <h4 className="font-bold text-gray-800 dark:text-gray-100 text-lg">{item.tema}</h4>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 italic mb-2">{item.objetivo}</p>
 
                                 <div className="flex items-center gap-3">
-                                    <div className="flex-1 bg-gray-100 rounded-full h-2.5 max-w-md">
+                                    <div className="flex-1 bg-gray-100 dark:bg-slate-700 rounded-full h-2.5 max-w-md">
                                         <div
                                             className={`h-2.5 rounded-full transition-all duration-500 ${item.meta_total === 0 ? 'bg-blue-500' : // AZUL si es Externo
                                                 item.porcentaje >= 100 ? 'bg-green-500' :
@@ -376,35 +378,35 @@ export default function GestionPage() {
                                             style={{ width: `${item.meta_total === 0 && item.avance_real > 0 ? 100 : Math.min(item.porcentaje, 100)}%` }}
                                         ></div>
                                     </div>
-                                    <span className="text-xs font-bold text-gray-600 w-12 text-right">
+                                    <span className="text-xs font-bold text-gray-600 dark:text-gray-300 w-12 text-right">
                                         {item.meta_total === 0 ? (item.avance_real > 0 ? 'OK' : '-') : item.porcentaje + '%'}
                                     </span>
                                 </div>
                             </div>
 
-                            <div className="flex items-center gap-6 border-l border-gray-100 pl-6">
+                            <div className="flex items-center gap-6 border-l border-gray-100 dark:border-slate-700 pl-6">
                                 <div className="text-right flex flex-col items-end">
-                                    <p className="text-[10px] text-gray-400 font-bold uppercase mb-1">Estado</p>
+                                    <p className="text-[10px] text-gray-400 dark:text-slate-500 font-bold uppercase mb-1">Estado</p>
 
                                     {item.faltantes.length > 0 ? (
                                         // 1. Si hay faltantes, mostramos el botón rojo de "Faltan #" sin importar la categoría
-                                        <div className="flex items-center gap-1.5 bg-red-50 text-red-600 px-3 py-1 rounded-md border border-red-100">
+                                        <div className="flex items-center gap-1.5 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 px-3 py-1 rounded-md border border-red-100 dark:border-red-800/50">
                                             <AlertCircle size={14} />
                                             <span className="text-sm font-bold">Faltan {item.faltantes.length}</span>
                                         </div>
                                     ) : item.meta_total === 0 && item.avance_real > 0 ? (
                                         // 2. Si no hay meta pero sí hubo gente (Externos/Contratistas que sí asistieron)
-                                        <div className="flex items-center gap-1.5 bg-blue-50 text-blue-700 px-3 py-1 rounded-md border border-blue-100">
+                                        <div className="flex items-center gap-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 px-3 py-1 rounded-md border border-blue-100 dark:border-blue-800/50">
                                             <span className="text-sm font-bold">Externo / OK</span>
                                         </div>
                                     ) : item.meta_total === 0 && item.avance_real === 0 ? (
                                         // 3. Si no hay nada de nada
-                                        <div className="flex items-center gap-1.5 bg-gray-50 text-gray-400 px-3 py-1 rounded-md border border-gray-100">
+                                        <div className="flex items-center gap-1.5 bg-gray-50 dark:bg-slate-700 text-gray-400 dark:text-gray-300 px-3 py-1 rounded-md border border-gray-100 dark:border-slate-600">
                                             <span className="text-sm font-bold">Contratista</span>
                                         </div>
                                     ) : (
                                         // 4. Si la meta se cumplió al 100%
-                                        <div className="flex items-center gap-1.5 bg-green-50 text-green-700 px-3 py-1 rounded-md border border-green-100">
+                                        <div className="flex items-center gap-1.5 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 px-3 py-1 rounded-md border border-green-100 dark:border-green-800/50">
                                             <span className="text-sm font-bold">Completado</span>
                                         </div>
                                     )}
@@ -413,29 +415,29 @@ export default function GestionPage() {
                                 <button
                                     onClick={() => toggleExpand(item.id_plan)}
                                     disabled={item.faltantes.length === 0}
-                                    className={`p-2 rounded-full border transition ${item.faltantes.length === 0 ? 'opacity-30 cursor-not-allowed' :
-                                        expandedId === item.id_plan ? 'bg-gray-100 rotate-180' : 'hover:bg-gray-50'
+                                    className={`p-2 rounded-full border dark:border-slate-600 transition ${item.faltantes.length === 0 ? 'opacity-30 cursor-not-allowed' :
+                                        expandedId === item.id_plan ? 'bg-gray-100 dark:bg-slate-700 rotate-180' : 'hover:bg-gray-50 dark:hover:bg-slate-700'
                                         }`}
                                 >
-                                    <ChevronDown size={20} className="text-gray-600" />
+                                    <ChevronDown size={20} className="text-gray-600 dark:text-gray-300" />
                                 </button>
                             </div>
                         </div>
 
                         {expandedId === item.id_plan && item.faltantes.length > 0 && (
-                            <div className="border-t border-gray-100 bg-gray-50 p-5 animate-fadeIn">
-                                <h5 className="text-sm font-bold text-red-600 mb-3 flex items-center gap-2">
+                            <div className="border-t border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/50 p-5 animate-fadeIn">
+                                <h5 className="text-sm font-bold text-red-600 dark:text-red-400 mb-3 flex items-center gap-2">
                                     <AlertCircle size={16} /> Personal Pendiente ({item.faltantes.length}):
                                 </h5>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
                                     {item.faltantes.map((worker) => (
-                                        <div key={worker.dni} className="bg-white p-2 rounded border border-gray-200 shadow-sm flex items-center gap-3">
-                                            <div className="w-6 h-6 rounded-full bg-red-100 flex items-center justify-center text-red-600 font-bold text-[10px]">
+                                        <div key={worker.dni} className="bg-white dark:bg-slate-700 p-2 rounded border border-gray-200 dark:border-slate-600 shadow-sm flex items-center gap-3">
+                                            <div className="w-6 h-6 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center text-red-600 dark:text-red-400 font-bold text-[10px]">
                                                 {worker.nombres.charAt(0)}
                                             </div>
                                             <div className="overflow-hidden">
-                                                <p className="text-xs font-bold text-gray-700 truncate">{worker.apellidos}, {worker.nombres}</p>
-                                                <p className="text-[10px] text-gray-500">{worker.cargo}</p>
+                                                <p className="text-xs font-bold text-gray-700 dark:text-gray-200 truncate">{worker.apellidos}, {worker.nombres}</p>
+                                                <p className="text-[10px] text-gray-500 dark:text-gray-400">{worker.cargo}</p>
                                             </div>
                                         </div>
                                     ))}
