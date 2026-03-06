@@ -1,12 +1,14 @@
-// backend/src/middlewares/auth.middleware.js
-const jwt = require("jsonwebtoken");
-
-// 1. Cambiamos el nombre de 'authMiddleware' a 'verificarToken'
-const verificarToken = (req, res, next) => {
+const logger = require("../utils/logger");
+const jwt = require("jsonwebtoken"); const verificarToken = (req, res, next) => {
+  // Buscamos el token en la cabecera O en las cookies (HttpOnly)
   const authHeader = req.headers["authorization"];
-  const token = authHeader && authHeader.split(" ")[1];
+  const tokenHeader = authHeader && authHeader.split(" ")[1];
+  const tokenCookie = req.cookies?.token;
+
+  const token = tokenHeader || tokenCookie;
 
   if (!token) {
+    logger.warn(`Intento de acceso denegado a ${req.originalUrl}: Sin token`);
     return res.status(401).json({ error: "Acceso denegado: No hay token" });
   }
 
@@ -15,9 +17,10 @@ const verificarToken = (req, res, next) => {
     req.user = decoded;
     next();
   } catch (error) {
+    logger.error(`Token inválido o expirado en ${req.originalUrl}`);
     return res.status(401).json({ error: "Token inválido o expirado" });
   }
 };
 
-// 2. IMPORTANTE: Exportamos como OBJETO (con llaves)
 module.exports = { verificarToken };
+

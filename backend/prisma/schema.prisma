@@ -25,16 +25,21 @@ model empresa {
 // 2. USUARIOS DEL SISTEMA
 // --------------------------------------
 model usuarios {
-  id_usuario     Int      @id @default(autoincrement())
-  nombre         String   @db.VarChar(100)
-  usuario        String   @unique @db.VarChar(50)
-  contrasena     String   @db.VarChar(255)
-  rol            String   @db.VarChar(30)
-  estado         Boolean  @default(true)
-  fecha_creacion DateTime @default(now())
-  solicita_reset  Boolean @default(false)
+  id_usuario      Int       @id @default(autoincrement())
+  nombre          String    @db.VarChar(100)
+  usuario         String    @unique @db.VarChar(50)
+  email           String?   @unique @db.VarChar(150)
+  contrasena      String?   @db.VarChar(255)
+  rol             String    @db.VarChar(30)
+  estado          Boolean   @default(true)
+  fecha_creacion  DateTime  @default(now())
+  solicita_reset  Boolean   @default(false)
+  
+  // Para invitaciones y recuperación de clave
+  reset_token     String?   @db.VarChar(255)
+  reset_token_exp DateTime?
 
-  capacitaciones capacitaciones[]
+  capacitaciones  capacitaciones[]
 }
 
 // --------------------------------------

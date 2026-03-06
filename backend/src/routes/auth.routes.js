@@ -6,10 +6,15 @@ const router = Router();
 const { login } = require("../controllers/usuario.controller");
 
 // Importas 'solicitarRecuperacion' desde Auth
-const { solicitarRecuperacion } = require("../controllers/auth.controller");
+const { solicitarRecuperacion, restablecerConToken } = require("../controllers/auth.controller");
+
+const validate = require("../middlewares/validate");
+const { loginSchema } = require("../schemas/auth.schema");
 
 // Rutas
-router.post("/login", login);
+router.post("/login", validate(loginSchema), login);
 router.post("/recuperar", solicitarRecuperacion);
+router.post("/reset-password", restablecerConToken);
+
 
 module.exports = router;
