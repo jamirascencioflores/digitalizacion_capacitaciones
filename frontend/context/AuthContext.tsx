@@ -51,13 +51,19 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const login = async (usuario: string, contrasena: string) => {
         try {
             const { data } = await api.post('/auth/login', { usuario, contrasena });
-            const { token, usuario: usuarioData } = data; // Asegúrate de que el backend devuelve 'usuario' o 'user'
+            const { token, usuario: usuarioData } = data;
 
             localStorage.setItem('token', token);
             localStorage.setItem('user', JSON.stringify(usuarioData));
 
             setUser(usuarioData);
-            router.push('/dashboard');
+
+            // 🟢 REDIRECCIÓN INTELIGENTE: Si necesita reset, lo mandamos a cambiar clave
+            if (usuarioData.solicita_reset) {
+                router.push('/change-password');
+            } else {
+                router.push('/dashboard');
+            }
 
         } catch (error: unknown) {
             console.error("Error Login:", error);

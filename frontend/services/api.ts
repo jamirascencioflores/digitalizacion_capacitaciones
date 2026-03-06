@@ -9,10 +9,12 @@ import axios from "axios";
 const baseURL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 const api = axios.create({
   baseURL: baseURL,
+  withCredentials: true, // 🟢 Habilitamos cookies HttpOnly de forma automática
   headers: {
     "Content-Type": "application/json",
   },
 });
+
 
 // 🟢 INTERCEPTOR: Inyectar el token automáticamente
 api.interceptors.request.use(
