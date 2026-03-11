@@ -1,65 +1,55 @@
 // frontend/context/AlertasContext.tsx
 'use client';
 
-import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import api from '@/services/api';
 import { useAuth } from './AuthContext';
 
 interface AlertasContextType {
     alertasPendientes: number;
-    recargarAlertas: () => void;
+    recargarAlertas: () => Promise<void>;
 }
 
-const AlertasContext = createContext<AlertasContextType>({ alertasPendientes: 0, recargarAlertas: () => { } });
+const AlertasContext = createContext<AlertasContextType>({
+    alertasPendientes: 0,
+    recargarAlertas: async () => { },
+});
 
-export const useAlertas = () => useContext(AlertasContext);
-
-export const AlertasProvider = ({ children }: { children: ReactNode }) => {
+export const AlertasProvider = ({ children }: { children: React.ReactNode }) => {
     const [alertasPendientes, setAlertasPendientes] = useState(0);
     const { user } = useAuth();
 
-    // Normalizamos el rol
-    const esAdmin = user?.rol?.trim().toLowerCase() === 'administrador';
-
-    // Función memorizada con useCallback para evitar recreaciones
-    const verificarAlertas = useCallback(async () => {
-        if (!esAdmin) return;
+    const recargarAlertas = async () => {
+        // Solo el administrador procesa las alertas de usuarios
+        if (user?.rol?.trim().toLowerCase() !== 'administrador') return;
 
         try {
-            const res = await api.get('/usuarios/solicitudes');
-            setAlertasPendientes((prev) => {
-                // Solo actualizamos si el número cambió (optimización)
-                if (prev !== res.data.length) return res.data.length;
-                return prev;
-            });
+            const response = await api.get('/usuarios/solicitudes');
+            setAlertasPendientes(response.data.length);
         } catch (error) {
-            console.error("Error polling alertas", error);
+            console.error("Error al consultar las alertas en segundo plano", error);
         }
-    }, [esAdmin]);
+    };
 
     useEffect(() => {
-        if (esAdmin) {
-            // 🟢 SOLUCIÓN AL ERROR DE ESLINT:
-            // Creamos una función local asíncrona. Esto rompe la cadena síncrona 
-            // que el linter detecta como "peligrosa".
-            const iniciarPolling = async () => {
-                await verificarAlertas();
-            };
+        // Si hay un usuario logueado, activamos el radar
+        if (user) {
+            recargarAlertas(); // 1. Consultar apenas entra
 
-            // 1. Ejecutar inmediatamente
-            iniciarPolling();
+            // 2. Consultar silenciosamente cada 30 segundos
+            const intervalo = setInterval(recargarAlertas, 30000);
 
-            // 2. Configurar intervalo (cada 30 segundos)
-            const intervalo = setInterval(iniciarPolling, 30000);
-
-            // 3. Limpieza
+            // 3. Apagar el radar si cierra sesión
             return () => clearInterval(intervalo);
         }
-    }, [esAdmin, verificarAlertas]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [user]);
 
     return (
-        <AlertasContext.Provider value={{ alertasPendientes, recargarAlertas: verificarAlertas }}>
+        <AlertasContext.Provider value={{ alertasPendientes, recargarAlertas }}>
             {children}
         </AlertasContext.Provider>
     );
 };
+
+export const useAlertas = () => useContext(AlertasContext);

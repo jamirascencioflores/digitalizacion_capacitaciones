@@ -1,4 +1,4 @@
-// frontend/components/Sidebar.tsx // v2
+// frontend/components/Sidebar.tsx
 'use client';
 
 import Link from 'next/link';
@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useAlertas } from '@/context/AlertasContext';
+import { useBandeja } from '@/context/BandejaContext';
 import { useTheme } from 'next-themes';
 import { useState, useEffect } from 'react';
 import {
@@ -20,7 +21,8 @@ import {
     Moon,
     BellRing,
     Bot,
-    Loader2
+    Loader2,
+    Inbox // 🟢 NUEVO: Importamos el ícono de la bandeja
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -32,6 +34,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     const pathname = usePathname();
     const { user, logout } = useAuth();
     const { alertasPendientes } = useAlertas();
+    const { pendientesCount } = useBandeja();
     const userRole = user?.rol?.trim().toLowerCase();
 
     const { theme, setTheme } = useTheme();
@@ -60,7 +63,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         <>
             {/* barra lateral */}
             <aside className={`
-        fixed inset-y-0 left-0 z-50 w-72 h-[100dvh] transform bg-white dark:bg-[#0B1121] shadow-2xl md:shadow-none md:border-r border-gray-100/80 dark:border-gray-800/80
+        fixed inset-y-0 left-0 z-50 w-72 h-dvh transform bg-white dark:bg-[#0B1121] shadow-2xl md:shadow-none md:border-r border-gray-100/80 dark:border-gray-800/80
         transition-transform duration-300 ease-out flex flex-col shrink-0 will-change-transform
         ${isOpen ? 'translate-x-0' : '-translate-x-full'} 
         md:relative md:translate-x-0
@@ -150,6 +153,19 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                                 <span>Trabajadores</span>
                             </Link>
 
+                            {/* 🟢 NUEVA RUTA: BANDEJA WEB CON ALERTA */}
+                            <Link href="/dashboard/bandeja" className={`${linkClass('/dashboard/bandeja')} relative`} onClick={() => handleLinkClick('/dashboard/bandeja')}>
+                                <Inbox size={20} className={`transition-transform group-hover:scale-110 ${pendientesCount > 0 ? "text-orange-500 animate-pulse" : ""}`} />
+                                <span>Bandeja Web</span>
+
+                                {/* Burbuja de notificación estilo "Mensaje de WhatsApp" */}
+                                {pendientesCount > 0 && (
+                                    <span className="absolute right-4 bg-orange-500 shadow-md shadow-orange-500/30 text-white text-[10px] font-bold px-2 py-0.5 rounded-full animate-in zoom-in">
+                                        {pendientesCount}
+                                    </span>
+                                )}
+                            </Link>
+
                             {/* --- CONFIGURACIONES --- */}
                             <div className="mt-8 border-t border-gray-100/60 mx-4 pt-6"></div>
                             <p className="px-5 text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 w-full">Configuración</p>
@@ -163,7 +179,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                                     </div>
                                     {mounted && (
                                         <button className={`w-10 h-5 rounded-full relative transition-colors focus:outline-none shadow-inner ${theme === 'dark' ? 'bg-blue-500 border-blue-600' : 'bg-gray-200 border-gray-300 dark:bg-slate-700 dark:border-slate-600'} border`}>
-                                            <div className={`w-4 h-4 bg-white rounded-full absolute top-[1px] shadow-sm transition-transform ${theme === 'dark' ? 'right-0.5' : 'left-0.5'}`}></div>
+                                            <div className={`w-4 h-4 bg-white rounded-full absolute top-px shadow-sm transition-transform ${theme === 'dark' ? 'right-0.5' : 'left-0.5'}`}></div>
                                         </button>
                                     )}
                                 </div>
@@ -175,7 +191,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                                         <span className="text-sm font-medium">Notificaciones</span>
                                     </div>
                                     <button className={`w-10 h-5 rounded-full relative transition-colors focus:outline-none shadow-inner ${notifActive ? 'bg-blue-500 border-blue-600' : 'bg-gray-200 border-gray-300 dark:bg-slate-700 dark:border-slate-600'} border`}>
-                                        <div className={`w-4 h-4 bg-white rounded-full absolute top-[1px] shadow-sm transition-transform ${notifActive ? 'right-0.5' : 'left-0.5'}`}></div>
+                                        <div className={`w-4 h-4 bg-white rounded-full absolute top-px shadow-sm transition-transform ${notifActive ? 'right-0.5' : 'left-0.5'}`}></div>
                                     </button>
                                 </div>
 
@@ -186,7 +202,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                                         <span className="text-sm font-medium">Planet Bot</span>
                                     </div>
                                     <button className={`w-10 h-5 rounded-full relative transition-colors focus:outline-none shadow-inner ${botActive ? 'bg-blue-500 border-blue-600' : 'bg-gray-200 border-gray-300 dark:bg-slate-700 dark:border-slate-600'} border`}>
-                                        <div className={`w-4 h-4 bg-white rounded-full absolute top-[1px] shadow-sm transition-transform ${botActive ? 'right-0.5' : 'left-0.5'}`}></div>
+                                        <div className={`w-4 h-4 bg-white rounded-full absolute top-px shadow-sm transition-transform ${botActive ? 'right-0.5' : 'left-0.5'}`}></div>
                                     </button>
                                 </div>
                             </div>

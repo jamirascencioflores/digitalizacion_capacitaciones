@@ -1,20 +1,59 @@
 'use client';
 
-import { Mail, MapPin, Phone, Send, User, MessageSquare, Building2, ArrowRight } from 'lucide-react';
+import { Mail, MapPin, Phone, User, MessageSquare, Building2, ArrowRight, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { useState } from 'react';
-import Image from 'next/image';
+import { useForm } from 'react-hook-form';
+import api from '@/services/api'; // Asegúrate de que esta ruta sea correcta
+import { AxiosError } from 'axios';
 
-// formulario de contacto
+// 🟢 INTERFAZ DE DATOS
+interface ContactFormData {
+    nombre: string;
+    empresa: string;
+    codigoPais: string; // Opcional, se inyectará +51 por defecto si no se incluye
+    telefono: string;
+    email: string;
+    mensaje: string;
+}
+
 export default function ContactSection() {
-    const [formState, setFormState] = useState({ name: '', email: '', message: '' });
-    const [isSubmitting, setIsSubmitting] = useState(false);
+    // Estados visuales originales
     const [focusedField, setFocusedField] = useState<string | null>(null);
 
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
+    // Estados lógicos nuevos
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [toast, setToast] = useState<{ tipo: 'exito' | 'error', mensaje: string } | null>(null);
+
+    // Configuración del formulario
+    const { register, handleSubmit, formState: { errors }, reset } = useForm<ContactFormData>();
+
+    // 🟢 FUNCIÓN DE ENVÍO REAL
+    const onSubmit = async (data: ContactFormData) => {
         setIsSubmitting(true);
-        // simular envío
-        setTimeout(() => setIsSubmitting(false), 2000);
+        setToast(null);
+
+        try {
+            let telefonoLimpio = data.telefono.replace(/\s+/g, ''); // Quita espacios si los puso
+            if (!telefonoLimpio.startsWith('+')) {
+                telefonoLimpio = '+51' + telefonoLimpio; // Le inyecta el +51 de Perú por defecto
+            }
+
+            const datosParaEnviar = { ...data, telefono: telefonoLimpio };
+
+            await api.post('/contacto', datosParaEnviar);
+
+            setToast({ tipo: 'exito', mensaje: '¡Solicitud enviada! Nos contactaremos pronto.' });
+            reset();
+
+            setTimeout(() => setToast(null), 5000);
+        } catch (error) {
+            const err = error as AxiosError<{ error: string }>;
+            const msgError = err.response?.data?.error || 'Ocurrió un error al enviar el mensaje.';
+            setToast({ tipo: 'error', mensaje: msgError });
+            setTimeout(() => setToast(null), 5000);
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     return (
@@ -37,15 +76,11 @@ export default function ContactSection() {
 
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
 
-                    {/* información de contacto */}
+                    {/* información de contacto (IZQUIERDA) */}
                     <div className="lg:col-span-5 space-y-4">
-
-                        {/* tarjeta principal */}
                         <div className="bg-slate-900 dark:bg-gray-900 backdrop-blur-md p-8 rounded-3xl border border-white/10 dark:border-gray-800 hover:border-blue-500/30 transition-all duration-300 group relative overflow-hidden">
                             <div className="absolute inset-0 bg-gradient-to-br from-blue-600/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-
                             <h3 className="text-2xl font-bold text-white mb-6 relative z-10">Información de Contacto</h3>
-
                             <div className="space-y-6 relative z-10">
                                 <div className="flex items-center gap-4 group/item">
                                     <div className="w-12 h-12 bg-blue-500/10 rounded-xl flex items-center justify-center text-blue-400 border border-blue-500/20 group-hover/item:scale-110 transition-transform">
@@ -56,7 +91,6 @@ export default function ContactSection() {
                                         <p className="text-white font-medium hover:text-blue-400 transition-colors cursor-pointer">+51 987 654 321</p>
                                     </div>
                                 </div>
-
                                 <div className="flex items-center gap-4 group/item">
                                     <div className="w-12 h-12 bg-emerald-500/10 rounded-xl flex items-center justify-center text-emerald-400 border border-emerald-500/20 group-hover/item:scale-110 transition-transform">
                                         <Mail size={20} />
@@ -69,14 +103,11 @@ export default function ContactSection() {
                             </div>
                         </div>
 
-                        {/* Cobertura Nacional */}
                         <div className="bg-slate-900 dark:bg-gray-900 backdrop-blur-md p-8 rounded-3xl border border-white/10 dark:border-gray-800 relative overflow-hidden group transition-all duration-300">
-                            {/* fondo decorativo de red/mapa */}
                             <div className="absolute inset-0 opacity-20 group-hover:opacity-40 transition-opacity duration-700">
                                 <div className="absolute inset-0 bg-[radial-gradient(#3b82f6_1px,transparent_1px)] bg-[size:20px_20px]"></div>
                                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[200%] h-[200%] bg-[radial-gradient(circle_at_center,#3b82f6_0%,transparent_60%)] blur-3xl opacity-30"></div>
                             </div>
-
                             <div className="relative z-10 flex flex-col justify-center">
                                 <div className="w-12 h-12 bg-blue-500/20 rounded-xl flex items-center justify-center text-blue-400 border border-blue-500/30 mb-4 group-hover:scale-110 transition-transform duration-300">
                                     <MapPin size={24} />
@@ -89,46 +120,65 @@ export default function ContactSection() {
                         </div>
                     </div>
 
-                    {/* formulario */}
+                    {/* formulario (DERECHA) */}
                     <div className="lg:col-span-7">
                         <div className="bg-white dark:bg-gray-900 backdrop-blur-xl p-8 md:p-10 rounded-3xl border border-slate-200 dark:border-gray-800 shadow-2xl relative overflow-hidden transition-colors duration-300">
+
                             {/* borde superior */}
                             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-blue-500 opacity-50"></div>
 
-                            <form onSubmit={handleSubmit} className="space-y-6 relative z-10">
+                            {/* 🟢 ALERTA FLOTANTE INTEGRADA AL DISEÑO */}
+                            {toast && (
+                                <div className={`mb-6 p-4 rounded-xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4 ${toast.tipo === 'exito' ? 'bg-green-50 text-green-800 border border-green-200 dark:bg-green-900/30 dark:border-green-800 dark:text-green-300'
+                                    : 'bg-red-50 text-red-800 border border-red-200 dark:bg-red-900/30 dark:border-red-800 dark:text-red-300'
+                                    }`}>
+                                    {toast.tipo === 'exito' ? <CheckCircle2 size={20} /> : <AlertCircle size={20} />}
+                                    <p className="font-medium text-sm">{toast.mensaje}</p>
+                                </div>
+                            )}
+
+                            <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 relative z-10">
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                                     <div className="space-y-2">
                                         <label htmlFor="name" className="text-xs font-semibold text-slate-500 dark:text-slate-400 ml-1 uppercase tracking-wide">Nombre</label>
-                                        <div className={`relative group transition-all duration-300 ${focusedField === 'name' ? 'scale-[1.02]' : ''}`}>
+                                        <div className={`relative group transition-all duration-300 ${focusedField === 'nombre' ? 'scale-[1.02]' : ''}`}>
                                             <div className="absolute left-4 top-3.5 text-slate-400 dark:text-slate-500 group-focus-within:text-blue-500 transition-colors">
                                                 <User size={18} />
                                             </div>
+                                            {/* 🟢 CONECTADO CON REGISTER */}
                                             <input
                                                 type="text"
-                                                id="name"
-                                                onFocus={() => setFocusedField('name')}
-                                                onBlur={() => setFocusedField(null)}
-                                                className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none transition-all placeholder:text-slate-400 dark:text-slate-600 text-slate-900 dark:text-white"
-                                                placeholder="Tu nombre"
-                                                required
+                                                {...register("nombre", { required: "El nombre es obligatorio" })}
+                                                onFocus={() => setFocusedField('nombre')}
+                                                onBlur={(e) => {
+                                                    register("nombre").onBlur(e);
+                                                    setFocusedField(null);
+                                                }}
+                                                className={`w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-slate-950/50 border rounded-xl outline-none transition-all placeholder:text-slate-400 dark:text-slate-600 text-slate-900 dark:text-white ${errors.nombre ? 'border-red-500 focus:ring-red-500' : 'border-slate-200 dark:border-slate-800 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500'}`}
+                                                placeholder="Nombre completo"
                                             />
                                         </div>
+                                        {errors.nombre && <span className="text-red-500 text-xs font-bold mt-1 block">{errors.nombre.message}</span>}
                                     </div>
                                     <div className="space-y-2">
                                         <label htmlFor="company" className="text-xs font-semibold text-slate-500 dark:text-slate-400 ml-1 uppercase tracking-wide">Empresa</label>
-                                        <div className={`relative group transition-all duration-300 ${focusedField === 'company' ? 'scale-[1.02]' : ''}`}>
+                                        <div className={`relative group transition-all duration-300 ${focusedField === 'empresa' ? 'scale-[1.02]' : ''}`}>
                                             <div className="absolute left-4 top-3.5 text-slate-400 dark:text-slate-500 group-focus-within:text-blue-500 transition-colors">
                                                 <Building2 size={18} />
                                             </div>
                                             <input
                                                 type="text"
-                                                id="company"
-                                                onFocus={() => setFocusedField('company')}
-                                                onBlur={() => setFocusedField(null)}
-                                                className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none transition-all placeholder:text-slate-400 dark:text-slate-600 text-slate-900 dark:text-white"
+                                                {...register("empresa", { required: "La empresa es obligatoria" })}
+                                                onFocus={() => setFocusedField('empresa')}
+                                                onBlur={(e) => {
+                                                    register("empresa").onBlur(e);
+                                                    setFocusedField(null);
+                                                }}
+                                                className={`w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-slate-950/50 border rounded-xl outline-none transition-all placeholder:text-slate-400 dark:text-slate-600 text-slate-900 dark:text-white ${errors.empresa ? 'border-red-500 focus:ring-red-500' : 'border-slate-200 dark:border-slate-800 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500'}`}
                                                 placeholder="Tu empresa"
                                             />
                                         </div>
+                                        {errors.empresa && <span className="text-red-500 text-xs font-bold mt-1 block">{errors.empresa.message}</span>}
                                     </div>
                                 </div>
 
@@ -140,52 +190,106 @@ export default function ContactSection() {
                                         </div>
                                         <input
                                             type="email"
-                                            id="email"
+                                            {...register("email", {
+                                                required: "El correo es obligatorio",
+                                                pattern: { value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i, message: "Correo inválido" }
+                                            })}
                                             onFocus={() => setFocusedField('email')}
-                                            onBlur={() => setFocusedField(null)}
-                                            className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-gray-800/50 border border-slate-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 outline-none transition-all placeholder:text-slate-400 dark:text-gray-500 text-slate-900 dark:text-white"
+                                            onBlur={(e) => {
+                                                register("email").onBlur(e);
+                                                setFocusedField(null);
+                                            }}
+                                            className={`w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-gray-800/50 border rounded-xl outline-none transition-all placeholder:text-slate-400 dark:text-gray-500 text-slate-900 dark:text-white ${errors.email ? 'border-red-500 focus:ring-red-500' : 'border-slate-200 dark:border-gray-700 focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500'}`}
                                             placeholder="nombre@empresa.com"
-                                            required
                                         />
                                     </div>
+                                    {errors.email && <span className="text-red-500 text-xs font-bold mt-1 block">{errors.email.message}</span>}
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label htmlFor="telefono" className="text-xs font-semibold text-slate-500 dark:text-gray-400 ml-1 uppercase tracking-wide">WhatsApp / Celular</label>
+
+                                    <div className={`relative flex group transition-all duration-300 ${focusedField === 'telefono' ? 'scale-[1.01]' : ''}`}>
+
+                                        {/* 🟢 SELECTOR DE CÓDIGO DE PAÍS */}
+                                        <select
+                                            {...register("codigoPais")}
+                                            defaultValue="+51"
+                                            className="w-28 pl-3 pr-2 py-3 bg-slate-100 dark:bg-gray-800 border border-r-0 border-slate-200 dark:border-gray-700 rounded-l-xl outline-none text-slate-700 dark:text-gray-300 font-medium cursor-pointer focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all z-10"
+                                        >
+                                            <option value="+51">🇵🇪 +51</option>
+                                            <option value="+56">🇨🇱 +56</option>
+                                            <option value="+57">🇨🇴 +57</option>
+                                            <option value="+52">🇲🇽 +52</option>
+                                            <option value="+54">🇦🇷 +54</option>
+                                            <option value="+593">🇪🇨 +593</option>
+                                            <option value="+1">🇺🇸 +1</option>
+                                            <option value="+34">🇪🇸 +34</option>
+                                        </select>
+
+                                        {/* 🟢 INPUT DEL NÚMERO */}
+                                        <div className="relative flex-1">
+                                            <div className={`absolute left-3 top-3.5 transition-colors duration-300 ${focusedField === 'telefono' ? 'text-blue-500' : 'text-slate-400'}`}>
+                                                <Phone size={18} />
+                                            </div>
+                                            <input
+                                                type="tel"
+                                                {...register("telefono", {
+                                                    required: "El celular es obligatorio",
+                                                    pattern: { value: /^\d{8,12}$/, message: "Ingresa un número válido" }
+                                                })}
+                                                onFocus={() => setFocusedField('telefono')}
+                                                onBlur={(e) => {
+                                                    register("telefono").onBlur(e);
+                                                    setFocusedField(null);
+                                                }}
+                                                className={`w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-gray-800/50 border rounded-r-xl outline-none transition-all placeholder:text-slate-400 dark:text-gray-500 text-slate-900 dark:text-white ${errors.telefono ? 'border-red-500 focus:ring-red-500' : 'border-slate-200 dark:border-gray-700 focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500'}`}
+                                                placeholder="987 654 321"
+                                            />
+                                        </div>
+                                    </div>
+                                    {errors.telefono && <span className="text-red-500 text-xs font-bold mt-1 block">{errors.telefono.message}</span>}
                                 </div>
 
                                 <div className="space-y-2">
                                     <label htmlFor="message" className="text-xs font-semibold text-slate-500 dark:text-gray-400 ml-1 uppercase tracking-wide">Mensaje</label>
-                                    <div className={`relative group transition-all duration-300 ${focusedField === 'message' ? 'scale-[1.01]' : ''}`}>
-                                        <div className={`absolute left-4 top-3.5 transition-colors duration-300 ${focusedField === 'message' ? 'text-blue-500' : 'text-slate-400'}`}>
+                                    <div className={`relative group transition-all duration-300 ${focusedField === 'mensaje' ? 'scale-[1.01]' : ''}`}>
+                                        <div className={`absolute left-4 top-3.5 transition-colors duration-300 ${focusedField === 'mensaje' ? 'text-blue-500' : 'text-slate-400'}`}>
                                             <MessageSquare size={18} />
                                         </div>
                                         <textarea
-                                            id="message"
                                             rows={4}
-                                            onFocus={() => setFocusedField('message')}
-                                            onBlur={() => setFocusedField(null)}
-                                            className="w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-gray-800/50 border border-slate-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 outline-none transition-all placeholder:text-slate-400 dark:text-white resize-none"
+                                            {...register("mensaje", { required: "Por favor, cuéntanos sobre tu proyecto" })}
+                                            onFocus={() => setFocusedField('mensaje')}
+                                            onBlur={(e) => {
+                                                register("mensaje").onBlur(e);
+                                                setFocusedField(null);
+                                            }}
+                                            className={`w-full pl-12 pr-4 py-3 bg-slate-50 dark:bg-gray-800/50 border rounded-xl outline-none transition-all placeholder:text-slate-400 dark:text-white resize-none ${errors.mensaje ? 'border-red-500 focus:ring-red-500' : 'border-slate-200 dark:border-gray-700 focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500'}`}
                                             placeholder="Detalles sobre tu proyecto..."
-                                            required
                                         ></textarea>
                                     </div>
+                                    {errors.mensaje && <span className="text-red-500 text-xs font-bold mt-1 block">{errors.mensaje.message}</span>}
                                 </div>
 
                                 <button
                                     type="submit"
                                     disabled={isSubmitting}
-                                    className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-xl shadow-lg shadow-blue-600/20 transition-all hover:scale-[1.02] flex items-center justify-center gap-2 group relative overflow-hidden"
+                                    className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-xl shadow-lg shadow-blue-600/20 transition-all hover:scale-[1.02] flex items-center justify-center gap-2 group relative overflow-hidden disabled:opacity-70 disabled:cursor-not-allowed"
                                 >
                                     <span className="relative z-10 flex items-center gap-2">
-                                        {isSubmitting ? 'Enviando...' : 'Enviar Solicitud'}
-                                        {!isSubmitting && <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />}
+                                        {isSubmitting ? (
+                                            <><Loader2 className="animate-spin" size={20} /> Enviando...</>
+                                        ) : (
+                                            <>{'Enviar Solicitud'} <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" /></>
+                                        )}
                                     </span>
-                                    {/* Shine effect */}
                                     <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:animate-shimmer"></div>
                                 </button>
                             </form>
                         </div>
                     </div>
-
                 </div>
-
             </div>
         </section>
     );

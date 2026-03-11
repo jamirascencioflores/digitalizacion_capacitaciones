@@ -210,3 +210,17 @@ model IntentoEvaluacion {
   // Relaciones
   evaluacion      Evaluacion @relation(fields: [id_evaluacion], references: [id_evaluacion], onDelete: Cascade)
 }
+
+// --------------------------------------
+// 9. SOLICITUDES DE CONTACTO (LANDING PAGE)
+// --------------------------------------
+model solicitudes_contacto {
+  id_solicitud   Int      @id @default(autoincrement())
+  nombre         String   @db.VarChar(100)
+  empresa        String   @db.VarChar(100)
+  email          String   @db.VarChar(150)
+  telefono       String   @db.VarChar(30)
+  mensaje        String   @db.Text
+  fecha_envio    DateTime @default(now())
+  estado         String   @default("Pendiente") // Sirve para que el Admin marque si ya los contactó
+}
