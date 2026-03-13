@@ -6,18 +6,21 @@ const shuffleArray = (array) => {
   return array.sort(() => Math.random() - 0.5);
 };
 
-// 1. CREAR EVALUACIÓN (Con lógica de tiempo)
+// 1. CREAR EVALUACIÓN (A prueba de balas contra Strings del Frontend)
 const crearEvaluacion = async (req, res) => {
   try {
     const { id_capacitacion, tipo, titulo, preguntas, minutos_duracion } =
       req.body;
 
-    // Lógica de Tiempo: Si mandan minutos, calculamos la fecha de muerte
+    if (!id_capacitacion || !preguntas) {
+      return res.status(400).json({ error: "Faltan datos obligatorios" });
+    }
+
     let fechaCierre = null;
     if (minutos_duracion && parseInt(minutos_duracion) > 0) {
       fechaCierre = new Date();
       fechaCierre.setMinutes(
-        fechaCierre.getMinutes() + parseInt(minutos_duracion)
+        fechaCierre.getMinutes() + parseInt(minutos_duracion),
       );
     }
 
@@ -26,15 +29,17 @@ const crearEvaluacion = async (req, res) => {
         id_capacitacion: parseInt(id_capacitacion),
         tipo,
         titulo,
-        fecha_cierre: fechaCierre, // Guardamos la fecha límite
+        fecha_cierre: fechaCierre,
         preguntas: {
           create: preguntas.map((p) => ({
             enunciado: p.enunciado,
-            puntos: p.puntos || 4,
+            // 🟢 FIX: Forzamos a que sea un Número
+            puntos: parseInt(p.puntos) || 4,
             opciones: {
               create: p.opciones.map((o) => ({
                 texto: o.texto,
-                es_correcta: o.es_correcta,
+                // 🟢 FIX: Forzamos a que sea un Booleano real
+                es_correcta: o.es_correcta === true || o.es_correcta === "true",
               })),
             },
           })),
@@ -47,14 +52,18 @@ const crearEvaluacion = async (req, res) => {
       },
     });
 
-    res.json({ message: "Evaluación creada con éxito", data: nuevaEvaluacion });
+    res
+      .status(201)
+      .json({ message: "Evaluación creada con éxito", data: nuevaEvaluacion });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Error al crear evaluación" });
+    console.error("Error en crearEvaluacion:", error);
+    res
+      .status(500)
+      .json({ error: "Error al crear evaluación en la base de datos." });
   }
 };
 
-// 2. OBTENER EVALUACIÓN PÚBLICA (Barajada y con validación de tiempo)
+// 2. OBTENER EVALUACIÓN PÚBLICA
 const obtenerParaResolver = async (req, res) => {
   try {
     const { id } = req.params;
@@ -68,7 +77,7 @@ const obtenerParaResolver = async (req, res) => {
         preguntas: {
           include: {
             opciones: {
-              select: { id_opcion: true, texto: true }, // Solo texto e ID
+              select: { id_opcion: true, texto: true },
             },
           },
         },
@@ -78,13 +87,12 @@ const obtenerParaResolver = async (req, res) => {
     if (!evaluacion)
       return res.status(404).json({ error: "Evaluación no encontrada" });
 
-    // 🔴 BLOQUEO MANUAL (Switch)
-    if (!evaluacion.estado)
+    if (!evaluacion.estado) {
       return res
         .status(400)
         .json({ error: "El examen ha sido cerrado por el instructor." });
+    }
 
-    // 🔴 BLOQUEO POR TIEMPO
     if (
       evaluacion.fecha_cierre &&
       new Date() > new Date(evaluacion.fecha_cierre)
@@ -94,34 +102,28 @@ const obtenerParaResolver = async (req, res) => {
         .json({ error: "El tiempo para responder este examen ha terminado." });
     }
 
-    // 🔀 ALEATORIEDAD (RANDOM)
-    // Clonamos el objeto para no afectar la cache de prisma (aunque aquí no aplicaría cache, es buena práctica)
     const evaluacionRandom = { ...evaluacion };
-
-    // Barajar Preguntas
     evaluacionRandom.preguntas = shuffleArray(evaluacionRandom.preguntas);
-
-    // Barajar Opciones dentro de cada pregunta
     evaluacionRandom.preguntas.forEach((p) => {
       p.opciones = shuffleArray(p.opciones);
     });
 
     res.json(evaluacionRandom);
   } catch (error) {
-    console.error(error);
+    console.error("Error en obtenerParaResolver:", error);
     res.status(500).json({ error: "Error al cargar examen" });
   }
 };
 
-// 3. REGISTRAR INTENTO (Nota Base 20 + Anti-Duplicados)
+// 3. REGISTRAR INTENTO
 const registrarIntento = async (req, res) => {
   try {
     const { id_evaluacion, dni, nombre, respuestas } = req.body;
 
-    // VALIDACIÓN ANTI-DUPLICADOS
     const intentoPrevio = await prisma.intentoEvaluacion.findFirst({
       where: { id_evaluacion: parseInt(id_evaluacion), dni_trabajador: dni },
     });
+
     if (intentoPrevio) {
       return res
         .status(400)
@@ -139,6 +141,7 @@ const registrarIntento = async (req, res) => {
     evaluacion.preguntas.forEach((pregunta) => {
       puntajeMaximoPosible += pregunta.puntos;
       const opcionElegidaId = respuestas[pregunta.id_pregunta];
+
       if (opcionElegidaId) {
         const opcionCorrecta = pregunta.opciones.find((o) => o.es_correcta);
         if (
@@ -150,7 +153,6 @@ const registrarIntento = async (req, res) => {
       }
     });
 
-    // Base 20
     let notaEnBase20 = 0;
     if (puntajeMaximoPosible > 0) {
       notaEnBase20 = Math.round((notaBruta / puntajeMaximoPosible) * 20);
@@ -175,8 +177,8 @@ const registrarIntento = async (req, res) => {
       aprobado: estaAprobado,
     });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Error al calificar" });
+    console.error("Error en registrarIntento:", error);
+    res.status(500).json({ error: "Error al calificar el examen" });
   }
 };
 
@@ -205,39 +207,31 @@ const eliminarEvaluacion = async (req, res) => {
   }
 };
 
-// 6. EDITAR EVALUACIÓN
-// 6. EDITAR EVALUACIÓN (Con actualización de Tiempo)
+// 6. EDITAR EVALUACIÓN (A prueba de balas)
 const editarEvaluacion = async (req, res) => {
   try {
     const { id } = req.params;
     const { tipo, titulo, preguntas, minutos_duracion } = req.body;
 
-    // 1. Preparamos los datos básicos
     let datosActualizar = { tipo, titulo };
 
-    // 2. 🟢 Lógica de Tiempo en Edición:
-    // Si el usuario escribió un número en "minutos", recalculamos la fecha de cierre.
     if (minutos_duracion !== undefined && minutos_duracion !== "") {
       const min = parseInt(minutos_duracion);
       if (min > 0) {
-        // Seteamos fecha de cierre: AHORA + MINUTOS
         const nuevaFecha = new Date();
         nuevaFecha.setMinutes(nuevaFecha.getMinutes() + min);
         datosActualizar.fecha_cierre = nuevaFecha;
       } else if (min === 0) {
-        // Si pone 0, quitamos el límite de tiempo (Examen infinito)
         datosActualizar.fecha_cierre = null;
       }
     }
 
     await prisma.$transaction(async (tx) => {
-      // Actualizamos cabecera (incluyendo fecha si cambió)
       await tx.evaluacion.update({
         where: { id_evaluacion: parseInt(id) },
         data: datosActualizar,
       });
 
-      // Borramos y recreamos preguntas (Tu lógica original)
       await tx.pregunta.deleteMany({ where: { id_evaluacion: parseInt(id) } });
 
       for (const p of preguntas) {
@@ -245,21 +239,24 @@ const editarEvaluacion = async (req, res) => {
           data: {
             id_evaluacion: parseInt(id),
             enunciado: p.enunciado,
-            puntos: p.puntos || 4,
+            // 🟢 FIX: Forzamos a que sea un Número
+            puntos: parseInt(p.puntos) || 4,
             opciones: {
               create: p.opciones.map((o) => ({
                 texto: o.texto,
-                es_correcta: o.es_correcta,
+                // 🟢 FIX: Forzamos a que sea un Booleano real
+                es_correcta: o.es_correcta === true || o.es_correcta === "true",
               })),
             },
           },
         });
       }
     });
+
     res.json({ message: "Evaluación actualizada correctamente" });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Error al editar evaluación" });
+    console.error("Error en editarEvaluacion:", error);
+    res.status(500).json({ error: "Error al editar la evaluación." });
   }
 };
 
@@ -276,7 +273,7 @@ const eliminarIntento = async (req, res) => {
   }
 };
 
-// 8. CAMBIAR ESTADO (TOGGLE)
+// 8. CAMBIAR ESTADO
 const toggleEstado = async (req, res) => {
   try {
     const { id } = req.params;

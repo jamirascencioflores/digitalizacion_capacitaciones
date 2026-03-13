@@ -575,6 +575,18 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
         menu: (base: Record<string, unknown>) => ({ ...base, zIndex: 9999 })
     };
 
+    // 🟢 NUEVA FUNCIÓN: Recarga silenciosa solo de las evaluaciones
+    const recargarEvaluaciones = async () => {
+        try {
+            const { data } = await api.get(`/capacitaciones/${id}`);
+            if (data.evaluaciones) {
+                setEvaluaciones(data.evaluaciones); // Actualiza la lista sin recargar la página
+            }
+        } catch (error) {
+            console.error("Error al recargar evaluaciones:", error);
+        }
+    };
+
     if (loading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-blue-600" size={40} /></div>;
 
     return (
@@ -695,7 +707,7 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
                 <EvaluacionesTab
                     idCapacitacion={Number(id)}
                     evaluacionesExistentes={evaluaciones}
-                    onRecargar={() => window.location.reload()}
+                    onRecargar={recargarEvaluaciones} 
                 />
             ) : (
 
