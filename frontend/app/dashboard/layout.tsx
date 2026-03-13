@@ -85,10 +85,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                 />
                             </div>
 
-                            {/* Título en Desktop */}
-                            <div className="hidden md:block">
-                                <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100 tracking-tight">Panel Administrativo</h2>
-                            </div>
                         </div>
 
                         {/* Controles Rápidos (Desktop & Mobile) */}

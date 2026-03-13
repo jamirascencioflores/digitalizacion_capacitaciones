@@ -267,6 +267,15 @@ const obtenerCapacitacion = async (req, res) => {
       include: {
         participantes: true,
         documentos: true,
+        evaluaciones: {
+          include: {
+            preguntas: {
+              include: {
+                opciones: true,
+              },
+            },
+          },
+        },
       },
     });
 
@@ -712,9 +721,11 @@ const exportarExcel = async (req, res) => {
       sheet.getCell("A6").value = "FECHA:";
       sheet.getCell("B6").value = new Date(cap.fecha).toLocaleDateString();
       sheet.getCell("C6").value = "HORARIO:";
-      sheet.getCell("D6").value = `${cap.hora_inicio ? cap.hora_inicio.toISOString().substring(11, 16) : ""
-        } - ${cap.hora_termino ? cap.hora_termino.toISOString().substring(11, 16) : ""
-        }`;
+      sheet.getCell("D6").value = `${
+        cap.hora_inicio ? cap.hora_inicio.toISOString().substring(11, 16) : ""
+      } - ${
+        cap.hora_termino ? cap.hora_termino.toISOString().substring(11, 16) : ""
+      }`;
       sheet.getCell("A6").font = { bold: true };
       sheet.getCell("C6").font = { bold: true };
 
