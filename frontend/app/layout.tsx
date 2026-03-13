@@ -6,6 +6,7 @@ import { AuthProvider } from "@/context/AuthContext";
 import { AlertasProvider } from '@/context/AlertasContext';
 import PlanetBot from "@/components/planet-bot/PlanetBot";
 import { ThemeProvider } from '@/components/ThemeProvider';
+import { Toaster } from 'sonner';
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -28,6 +29,7 @@ export default function RootLayout({
           <AuthProvider>
             <AlertasProvider>
               {children}
+              <Toaster position="top-right" richColors closeButton />
               <PlanetBot />
             </AlertasProvider>
           </AuthProvider>
