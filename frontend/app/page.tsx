@@ -9,6 +9,7 @@ import Footer from '@/components/landing/Footer';
 // página principal
 export default function Home() {
   console.log('Page Rebuild Trigger');
+
   return (
     <main className="min-h-screen bg-white dark:bg-gray-950 overflow-x-hidden transition-colors duration-300">
       {/* navegación */}
@@ -38,11 +39,8 @@ export default function Home() {
 
       {/* sección de contacto */}
       <div id="contacto" className="bg-gray-50 dark:bg-gray-900/20">
-        {/* Supongo que ContactSection tiene textos persuasivos o información de la empresa */}
-        <ContactSection />
-
         {/* Nuestro nuevo formulario envuelto para que se vea elegante */}
-        <section className="pb-20 px-4">
+        <section className="py-20 px-4">
           <div className="container mx-auto">
             <ContactSection />
           </div>
