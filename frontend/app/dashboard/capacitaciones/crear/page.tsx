@@ -2,12 +2,12 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useParams } from 'next/navigation';
 import { useForm, useFieldArray, SubmitHandler, SubmitErrorHandler, Controller } from 'react-hook-form';
 import { useRouter } from 'next/navigation';
-import Image from 'next/image';
 import api from '@/services/api';
+import Image from 'next/image';
 import { getEmpresaConfig } from '@/services/empresa.service';
+import { AxiosError } from 'axios';
 import Select from 'react-select';
 import { useTheme } from 'next-themes';
 import {
@@ -21,11 +21,38 @@ import SignaturePad from '@/components/ui/SignaturePad';
 import { uploadImageToLocal, uploadBase64 } from '@/services/upload.service';
 
 // --- UTILIDADES ---
-const normalizar = (texto: string | undefined | null) => {
-    return (texto || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+const normalizar = (texto: any) => {
+    if (typeof texto !== 'string') return '';
+    return texto.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
 };
 
-// --- INTERFACES ---
+const convertirAWebp = (file: File): Promise<File> => {
+    return new Promise((resolve, reject) => {
+        const img = new window.Image();
+        img.src = URL.createObjectURL(file);
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return reject('No se pudo crear el contexto del canvas');
+
+            ctx.drawImage(img, 0, 0);
+
+            canvas.toBlob((blob) => {
+                if (blob) {
+                    const newName = file.name.replace(/\.[^/.]+$/, "") + ".webp";
+                    const newFile = new File([blob], newName, { type: 'image/webp' });
+                    resolve(newFile);
+                } else {
+                    reject('Error al convertir a WebP');
+                }
+            }, 'image/webp', 0.8);
+        };
+        img.onerror = (error) => reject(error);
+    });
+};
+
 interface PlanItem {
     tema: string;
     clasificacion: string;
@@ -83,8 +110,8 @@ type Inputs = {
     total_horas: string;
     expositor_nombre: string;
     expositor_dni: string;
-    expositor_firma?: string | FileList;
-    evidencias?: FileList;
+    expositor_firma?: string | FileList | File;
+    evidencias?: FileList | File[];
     institucion_procedencia: string;
     area_objetivo: string;
     participantes: {
@@ -96,6 +123,7 @@ type Inputs = {
         genero: string;
         condicion: string;
         firma_url?: string;
+        es_maestra?: boolean;
     }[];
 };
 
@@ -111,10 +139,8 @@ export default function CrearCapacitacionPage() {
         setMounted(true);
     }, []);
 
-    // 🟢 ESTADO PARA ALERTAS FRONTEND
     const [mensajeAlerta, setMensajeAlerta] = useState<{ tipo: 'error' | 'exito', texto: string } | null>(null);
 
-    // --- ESTADOS ---
     const [planes, setPlanes] = useState<PlanItem[]>([]);
     const [sugerencias, setSugerencias] = useState<PlanItem[]>([]);
     const [mostrarSugerencias, setMostrarSugerencias] = useState(false);
@@ -128,8 +154,6 @@ export default function CrearCapacitacionPage() {
     const [indiceFirmaActiva, setIndiceFirmaActiva] = useState<number | null>(null);
     const workerPadRef = useRef<SignatureCanvas>(null);
     const [empresaConfig, setEmpresaConfig] = useState<EmpresaConfig | null>(null);
-    const params = useParams();
-    const id = params?.id;
 
     useEffect(() => {
         if (!authLoading && user?.rol === 'auditor') {
@@ -150,10 +174,9 @@ export default function CrearCapacitacionPage() {
         }
     });
 
-    const { fields, append, remove, replace } = useFieldArray({ control, name: "participantes" });
+    const { fields, append, remove, replace, update } = useFieldArray({ control, name: "participantes" });
     const participantesWatch = watch('participantes');
 
-    // --- CARGA INICIAL ---
     useEffect(() => {
         const cargarDatos = async () => {
             const config = await getEmpresaConfig();
@@ -182,7 +205,6 @@ export default function CrearCapacitacionPage() {
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, [setValue]);
 
-    // --- CÁLCULO AUTOMÁTICO DE GÉNERO Y TOTALES ---
     useEffect(() => {
         if (!participantesWatch) return;
 
@@ -202,7 +224,6 @@ export default function CrearCapacitacionPage() {
         setValue('total_trabajadores', hombres + mujeres);
     }, [participantesWatch, setValue]);
 
-    // --- AUTOCOMPLETE TEMA ---
     const handleTemaSearch = (texto: string) => {
         if (texto.length > 1) {
             const coincidencias = planes.filter(p =>
@@ -247,23 +268,22 @@ export default function CrearCapacitacionPage() {
 
     const sedeSeleccionada = watch('sede_empresa');
 
-    // --- MANEJO DE EVIDENCIAS Y FIRMAS ---
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files.length > 0) {
-            const newFiles = Array.from(e.target.files);
-            const updatedFiles = [...evidencias, ...newFiles];
+            const files = Array.from(e.target.files);
+            const webpFiles = await Promise.all(files.map(file => convertirAWebp(file)));
+            const updatedFiles = [...evidencias, ...webpFiles];
             setEvidencias(updatedFiles);
-            setValue("evidencias", updatedFiles as unknown as FileList, { shouldValidate: true });
+            setValue("evidencias", updatedFiles, { shouldValidate: true });
         }
     };
 
     const removeEvidencia = (index: number) => {
         const updatedFiles = evidencias.filter((_, i) => i !== index);
         setEvidencias(updatedFiles);
-        setValue("evidencias", updatedFiles as unknown as FileList, { shouldValidate: true });
+        setValue("evidencias", updatedFiles, { shouldValidate: true });
     };
 
-    // --- LOGICA TABLA INTELIGENTE (OPCIONES DINÁMICAS) ---
     const getOpcionesFila = (index: number) => {
         const filaActual = participantesWatch[index];
         const areaSeleccionada = filaActual?.area;
@@ -310,37 +330,59 @@ export default function CrearCapacitacionPage() {
         if (yaExiste) {
             setMensajeAlerta({ tipo: 'error', texto: `El trabajador ${trabajador.apellidos} ${trabajador.nombres} ya está en la lista.` });
             window.scrollTo({ top: 0, behavior: 'smooth' });
-            setValue(`participantes.${index}.dni`, '');
-            setValue(`participantes.${index}.apellidos_nombres`, '');
+            update(index, { ...participantesWatch[index], dni: '', apellidos_nombres: '' });
             return;
         }
 
-        setValue(`participantes.${index}.dni`, trabajador.dni);
-        setValue(`participantes.${index}.apellidos_nombres`, `${trabajador.apellidos} ${trabajador.nombres}`);
-        setValue(`participantes.${index}.area`, trabajador.area);
-        setValue(`participantes.${index}.cargo`, trabajador.cargo);
+        const dniLimpio = String(trabajador.dni).padStart(8, '0');
         const generoNorm = trabajador.genero ? trabajador.genero.toUpperCase() : 'M';
-        setValue(`participantes.${index}.genero`, generoNorm);
-        if (trabajador.firma_url) setValue(`participantes.${index}.firma_url`, trabajador.firma_url);
+
+        update(index, {
+            ...participantesWatch[index],
+            dni: dniLimpio,
+            apellidos_nombres: `${trabajador.apellidos} ${trabajador.nombres}`,
+            area: trabajador.area,
+            cargo: trabajador.cargo,
+            genero: generoNorm,
+            firma_url: trabajador.firma_url || participantesWatch[index]?.firma_url || '',
+            es_maestra: !!trabajador.firma_url
+        });
     };
 
     const handleUploadFirma = async (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
         setUploadingRow(index);
-        try { const url = await uploadImageToLocal(file); if (url) setValue(`participantes.${index}.firma_url`, url); }
+        try {
+            const webpFile = await convertirAWebp(file);
+            const url = await uploadImageToLocal(webpFile);
+            if (url) setValue(`participantes.${index}.firma_url`, url);
+        }
         finally { setUploadingRow(null); }
     };
 
-    // --- MODAL FIRMA ---
     const abrirModalFirma = (index: number) => setIndiceFirmaActiva(index);
     const cerrarModalFirma = () => setIndiceFirmaActiva(null);
+
     const guardarFirmaModal = async () => {
         if (workerPadRef.current && !workerPadRef.current.isEmpty() && indiceFirmaActiva !== null) {
             const canvas = workerPadRef.current.getCanvas();
-            const base64 = canvas.toDataURL('image/png');
+
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = canvas.width;
+            tempCanvas.height = canvas.height;
+            const tempCtx = tempCanvas.getContext('2d');
+
+            if (tempCtx) {
+                tempCtx.fillStyle = "#ffffff";
+                tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+                tempCtx.drawImage(canvas, 0, 0);
+            }
+
+            const base64 = tempCanvas.toDataURL('image/webp', 0.8);
             const dni = participantesWatch[indiceFirmaActiva].dni || 'sin_dni';
-            const url = await uploadBase64(base64, `firma_trab_${dni}_${Date.now()}.png`);
+
+            const url = await uploadBase64(base64, `firma_trab_${dni}_${Date.now()}.webp`);
 
             if (url) {
                 setValue(`participantes.${indiceFirmaActiva}.firma_url`, url, {
@@ -357,7 +399,8 @@ export default function CrearCapacitacionPage() {
         if (file) {
             setUploadingExpositor(true);
             try {
-                const url = await uploadImageToLocal(file);
+                const webpFile = await convertirAWebp(file);
+                const url = await uploadImageToLocal(webpFile);
                 if (url) setValue('expositor_firma', url);
             } catch (error) {
                 console.error(error);
@@ -368,141 +411,108 @@ export default function CrearCapacitacionPage() {
         }
     };
 
-    const uploadBase64ToFile = (base64Data: string, filename: string): File => {
-        const arr = base64Data.split(",");
-        const bstr = atob(arr[1]);
-        let n = bstr.length;
-        const u8arr = new Uint8Array(n);
-        while (n--) { u8arr[n] = bstr.charCodeAt(n); }
-        return new File([u8arr], filename, { type: "image/png" });
-    };
-
     const generarCodigoActa = () => {
-        // 1. Letra de la Sede
         const sede = watch('sede_empresa') === 'Majes' ? 'M' : 'O';
-
-        // 2. Año y Mes
         const fecha = new Date();
         const yy = String(fecha.getFullYear()).slice(-2);
         const mm = String(fecha.getMonth() + 1).padStart(2, '0');
-
-        // 3. Iniciales del Usuario (Si se llama Juan Perez -> JP)
         const nombreUsr = user?.nombre || 'US';
         const iniciales = nombreUsr.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
-
-        // 4. Número aleatorio de 3 dígitos (del 100 al 999)
         const aleatorio = Math.floor(100 + Math.random() * 900);
-
-        // Resultado final: ACT-M-2603-JP-842
         const nuevoCodigo = `ACT-${sede}-${yy}${mm}-${iniciales}-${aleatorio}`;
-
-        // Lo ponemos en el input y validamos
         setValue('codigo_acta', nuevoCodigo, { shouldValidate: true });
     };
 
     const onSubmit: SubmitHandler<Inputs> = async (data) => {
         setLoading(true);
-        setMensajeAlerta(null); // Limpiamos alertas previas
+        setMensajeAlerta(null);
         try {
             const formData = new FormData();
 
-            // 1. FIRMA
+            // 1. FIRMA EXPOSITOR
             if (modoFirma === 'pantalla' && signaturePadRef.current && !signaturePadRef.current.isEmpty()) {
                 const pad = signaturePadRef.current;
                 const canvas = pad.getCanvas();
-                const base64 = canvas.toDataURL('image/png');
-                const archivoFirma = uploadBase64ToFile(base64, `firma_expositor_${Date.now()}.png`);
-                formData.append('expositor_firma', archivoFirma);
+
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = canvas.width;
+                tempCanvas.height = canvas.height;
+                const tempCtx = tempCanvas.getContext('2d');
+                if (tempCtx) {
+                    tempCtx.fillStyle = "#ffffff";
+                    tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+                    tempCtx.drawImage(canvas, 0, 0);
+                }
+
+                const base64 = tempCanvas.toDataURL('image/webp', 0.8);
+                const urlFirmaExpositor = await uploadBase64(base64, `firma_expositor_${Date.now()}.webp`);
+                if (urlFirmaExpositor) {
+                    formData.append('expositor_firma', urlFirmaExpositor);
+                }
             } else if (data.expositor_firma && (data.expositor_firma as unknown as FileList)[0] instanceof File) {
                 const fileList = data.expositor_firma as unknown as FileList;
                 formData.append('expositor_firma', fileList[0]);
+            } else if (data.expositor_firma && typeof data.expositor_firma === 'string') {
+                formData.append('expositor_firma', data.expositor_firma);
             }
 
-            // 2. PROCESAR EVIDENCIAS (FOTOS)
+            // 2. EVIDENCIAS
             if (data.evidencias && data.evidencias.length > 0) {
                 for (let i = 0; i < data.evidencias.length; i++) {
-                    formData.append('evidencias', data.evidencias[i]);
+                    formData.append('evidencias', (data.evidencias as File[])[i]);
                 }
             }
 
-            // 3. CAMPOS DE TEXTO SIMPLES
-            Object.keys(data).forEach((key) => {
-                const k = key as keyof Inputs;
-                if (k !== 'participantes' && k !== 'expositor_firma' && k !== 'evidencias') {
-                    const value = data[k];
-                    if (value !== undefined && value !== null) {
-                        formData.append(key, String(value));
+            // 3. TEXTOS SIMPLES
+            (Object.keys(data) as Array<keyof Inputs | string>).forEach((key) => {
+                if (key !== 'participantes' && key !== 'expositor_firma' && key !== 'evidencias') {
+                    const val = data[key as keyof Inputs];
+                    if (val !== undefined && val !== null) {
+                        formData.append(key, String(val));
                     }
                 }
             });
 
-            // 4. PARTICIPANTES (JSON String)
+            // 4. PARTICIPANTES
             if (data.participantes) {
                 formData.append('participantes', JSON.stringify(data.participantes));
             }
 
-            // 5. ENVÍO A LA API
-            let response;
             const config = { headers: { "Content-Type": undefined } };
-
-            if (id) {
-                response = await api.put(`/capacitaciones/${id}`, formData, config);
-            } else {
-                response = await api.post('/capacitaciones', formData, config);
-            }
+            const response = await api.post('/capacitaciones', formData, config);
 
             if (response.status === 200 || response.status === 201) {
-                setMensajeAlerta({
-                    tipo: 'exito',
-                    texto: id ? '¡Capacitación actualizada correctamente! 🔄' : '¡Capacitación registrada con éxito! 📄'
-                });
-
-                setTimeout(() => {
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                }, 100);
-
-                setTimeout(() => {
-                    router.push('/dashboard');
-                }, 2000);
-
+                setMensajeAlerta({ tipo: 'exito', texto: '¡Capacitación registrada con éxito! 📄' });
+                setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 100);
+                setTimeout(() => router.push('/dashboard'), 2000);
                 return;
             }
 
         } catch (error: unknown) {
             console.error("🔥 Error completo:", error);
-            let mensajeError = "Ocurrió un error al enviar el formulario.";
+            let msg = 'Error desconocido al registrar';
 
-            if (error && typeof error === 'object' && 'response' in error) {
-                // @ts-expect-error: Acceso a axios
+            if (error instanceof AxiosError) {
                 const apiError = error.response?.data?.error || error.response?.data?.message || error.message;
-                mensajeError = apiError;
+                msg = apiError;
 
                 const textoError = String(apiError).toLowerCase();
                 if (textoError.includes('código de acta') || textoError.includes('duplicad') || textoError.includes('registrado')) {
-                    mensajeError = "El Código de Acta ingresado ya existe. Por favor, usa uno diferente.";
+                    msg = "El Código de Acta ingresado ya existe. Por favor, usa uno diferente.";
                     setError("codigo_acta", { type: "manual", message: "Código duplicado" });
-
-                    // 🟢 NUEVO: Ponemos el cursor automáticamente en el campo rojo
                     setTimeout(() => setFocus("codigo_acta"), 100);
                 }
-
             } else if (error instanceof Error) {
-                mensajeError = error.message;
+                msg = error.message;
             }
 
-            setMensajeAlerta({ tipo: 'error', texto: mensajeError });
-
-            // 🟢 NUEVO: Retrasamos el scroll 100ms para asegurar que React ya dibujó la alerta arriba
-            setTimeout(() => {
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-            }, 100);
-
+            setMensajeAlerta({ tipo: 'error', texto: msg });
+            setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 100);
         } finally {
             setLoading(false);
         }
     };
 
-    // 🟢 ERROR DE VALIDACIÓN: El usuario olvidó algún campo obligatorio
     const onError: SubmitErrorHandler<Inputs> = (e) => {
         console.error("Errores:", e);
         setMensajeAlerta({ tipo: 'error', texto: "Faltan campos obligatorios. Revisa los recuadros resaltados en rojo." });
@@ -639,9 +649,8 @@ export default function CrearCapacitacionPage() {
     return (
         <div className="max-w-6xl mx-auto space-y-6 pb-20 relative px-4">
 
-            {/* 🟢 BANNER DE ALERTAS FLOTANTE */}
             {mensajeAlerta && (
-                <div className={`fixed top-6 left-1/2 transform -translate-x-1/2 z-[100] w-[95%] max-w-md p-4 rounded-xl flex items-start gap-3 shadow-2xl border transition-all animate-in slide-in-from-top-8 fade-in ${mensajeAlerta.tipo === 'error' ? 'bg-white dark:bg-slate-900 border-red-500 text-red-800 dark:text-red-200' : 'bg-white dark:bg-slate-900 border-green-500 text-green-800 dark:text-green-200'}`}>
+                <div className={`fixed top-6 left-1/2 transform -translate-x-1/2 z-100 w-[95%] max-w-md p-4 rounded-xl flex items-start gap-3 shadow-2xl border transition-all animate-in slide-in-from-top-8 fade-in ${mensajeAlerta.tipo === 'error' ? 'bg-white dark:bg-slate-900 border-red-500 text-red-800 dark:text-red-200' : 'bg-white dark:bg-slate-900 border-green-500 text-green-800 dark:text-green-200'}`}>
                     <div className={`p-2 rounded-full ${mensajeAlerta.tipo === 'error' ? 'bg-red-100 dark:bg-red-900/30' : 'bg-green-100 dark:bg-green-900/30'}`}>
                         {mensajeAlerta.tipo === 'error' ? <AlertCircle className="text-red-600 dark:text-red-400" size={24} /> : <CheckCircle2 className="text-green-600 dark:text-green-400" size={24} />}
                     </div>
@@ -655,9 +664,8 @@ export default function CrearCapacitacionPage() {
                 </div>
             )}
 
-            {/* MODAL FIRMA TRABAJADOR */}
             {indiceFirmaActiva !== null && (
-                <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+                <div className="fixed inset-0 z-110 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
                     <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-gray-100 dark:border-slate-700 animate-in zoom-in-95 duration-200">
                         <div className="bg-gray-50 dark:bg-slate-900/50 px-5 py-4 border-b border-gray-100 dark:border-slate-700 flex justify-between items-center">
                             <h3 className="font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
@@ -692,12 +700,11 @@ export default function CrearCapacitacionPage() {
                     </div>
                 </div>
                 <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-900/30 rounded-lg px-3 py-1 flex items-center gap-2">
-                    <span className="text-xs font-bold text-yellow-700 dark:text-yellow-500 uppercase">Rev:</span>
+                    <span className="text-xs font-bold text-yellow-700 dark:text-yellow-500 uppercase tracking-widest">Rev:</span>
                     <input {...register("revision_usada")} className="w-12 bg-transparent border-b border-yellow-400 dark:border-yellow-600 text-sm font-bold text-center outline-none text-yellow-800 dark:text-yellow-200" />
                 </div>
             </div>
 
-            {/* PANEL DE CONTEO EN VIVO */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-2 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <div className="bg-white dark:bg-slate-800/40 p-5 rounded-2xl border border-blue-100 dark:border-blue-900/20 shadow-sm flex items-center justify-between transition-all hover:shadow-md hover:border-blue-500/30 group">
                     <div>
@@ -725,7 +732,6 @@ export default function CrearCapacitacionPage() {
             <form onSubmit={handleSubmit(onSubmit, onError)} className="space-y-6">
                 <input type="hidden" {...register("area_objetivo")} />
 
-                {/* SECTION 1: SEDE Y CÓDIGO */}
                 <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700">
                     <div className="flex items-center gap-2 mb-6 text-blue-700 dark:text-blue-400 font-bold border-b border-gray-50 dark:border-slate-700 pb-3">
                         <Building2 size={20} /> <h3 className="uppercase tracking-widest text-sm">Información de Sede</h3>
@@ -762,7 +768,6 @@ export default function CrearCapacitacionPage() {
                     </div>
                 </div>
 
-                {/* 2. DETALLES */}
                 <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700">
                     <div className="flex items-center gap-2 mb-4 border-b border-gray-200 dark:border-slate-700 pb-2 text-blue-700 dark:text-blue-400"><Clock size={20} /> <h3 className="font-bold">Detalles</h3></div>
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
@@ -849,7 +854,6 @@ export default function CrearCapacitacionPage() {
                     </div>
                 </div>
 
-                {/* SECTION 3: CLASIFICACIÓN */}
                 <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700">
                     <div className="flex items-center gap-2 mb-6 text-blue-700 dark:text-blue-400 font-bold border-b border-gray-50 dark:border-slate-700 pb-3">
                         <FileText size={20} /> <h3 className="uppercase tracking-widest text-sm">Clasificación de Actividad</h3>
@@ -885,27 +889,36 @@ export default function CrearCapacitacionPage() {
                                 </select>
                             </div>
                             <div className="grid grid-cols-2 gap-4">
+                                {/* 🔴 CAMPO MODALIDAD CON ALERTA VISUAL */}
                                 <div>
-                                    <label className="block text-[11px] font-bold text-gray-400 dark:text-slate-500 uppercase mb-3 tracking-widest">Modalidad</label>
-                                    <div className="flex bg-gray-50 dark:bg-slate-900/50 p-1 rounded-xl border border-transparent hover:border-gray-200 dark:hover:border-slate-700 transition-all">
-                                        <label className="flex-1 text-center py-2 rounded-lg cursor-pointer font-bold text-sm transition-all has-[:checked]:bg-blue-600 has-[:checked]:text-white text-gray-500">
-                                            <input type="radio" value="Interna" {...register("modalidad")} className="hidden" /> Interna
+                                    <label className={`block text-[11px] font-bold uppercase mb-3 tracking-widest ${errors.modalidad ? 'text-red-600' : 'text-gray-400 dark:text-slate-500'}`}>
+                                        Modalidad <span className="text-red-500">*</span>
+                                    </label>
+                                    <div className={`flex p-1 rounded-xl border-2 transition-all ${errors.modalidad ? 'bg-red-50 dark:bg-red-950/20 border-red-500 ring-4 ring-red-500/10' : 'bg-gray-50 dark:bg-slate-900/50 border-transparent hover:border-gray-200 dark:hover:border-slate-700'}`}>
+                                        <label className="flex-1 text-center py-2 rounded-lg cursor-pointer font-bold text-sm transition-all has-checked:bg-blue-600 has-checked:text-white text-gray-500">
+                                            <input type="radio" value="Interna" {...register("modalidad", { required: true })} className="hidden" /> Interna
                                         </label>
-                                        <label className="flex-1 text-center py-2 rounded-lg cursor-pointer font-bold text-sm transition-all has-[:checked]:bg-blue-600 has-[:checked]:text-white text-gray-500">
-                                            <input type="radio" value="Externa" {...register("modalidad")} className="hidden" /> Externa
+                                        <label className="flex-1 text-center py-2 rounded-lg cursor-pointer font-bold text-sm transition-all has-checked:bg-blue-600 has-checked:text-white text-gray-500">
+                                            <input type="radio" value="Externa" {...register("modalidad", { required: true })} className="hidden" /> Externa
                                         </label>
                                     </div>
+                                    {errors.modalidad && <span className="text-red-500 text-[10px] font-black mt-2 block uppercase">Selección requerida</span>}
                                 </div>
+
+                                {/* 🔴 CAMPO A. CORRECTIVA CON ALERTA VISUAL */}
                                 <div>
-                                    <label className="block text-[11px] font-bold text-gray-400 dark:text-slate-500 uppercase mb-3 tracking-widest">A. Correctiva</label>
-                                    <div className="flex bg-gray-50 dark:bg-slate-900/50 p-1 rounded-xl border border-transparent hover:border-gray-200 dark:hover:border-slate-700 transition-all">
-                                        <label className="flex-1 text-center py-2 rounded-lg cursor-pointer font-bold text-sm transition-all has-[:checked]:bg-red-500 has-[:checked]:text-white text-gray-500">
-                                            <input type="radio" value="SI" {...register("accion_correctiva")} className="hidden" /> SI
+                                    <label className={`block text-[11px] font-bold uppercase mb-3 tracking-widest ${errors.accion_correctiva ? 'text-red-600' : 'text-gray-400 dark:text-slate-500'}`}>
+                                        A. Correctiva <span className="text-red-500">*</span>
+                                    </label>
+                                    <div className={`flex p-1 rounded-xl border-2 transition-all ${errors.accion_correctiva ? 'bg-red-50 dark:bg-red-950/20 border-red-500 ring-4 ring-red-500/10' : 'bg-gray-50 dark:bg-slate-900/50 border-transparent hover:border-gray-200 dark:hover:border-slate-700'}`}>
+                                        <label className="flex-1 text-center py-2 rounded-lg cursor-pointer font-bold text-sm transition-all has-checked:bg-red-500 has-checked:text-white text-gray-500">
+                                            <input type="radio" value="SI" {...register("accion_correctiva", { required: true })} className="hidden" /> SI
                                         </label>
-                                        <label className="flex-1 text-center py-2 rounded-lg cursor-pointer font-bold text-sm transition-all has-[:checked]:bg-green-600 has-[:checked]:text-white text-gray-500">
-                                            <input type="radio" value="NO" {...register("accion_correctiva")} className="hidden" /> NO
+                                        <label className="flex-1 text-center py-2 rounded-lg cursor-pointer font-bold text-sm transition-all has-checked:bg-green-600 has-checked:text-white text-gray-500">
+                                            <input type="radio" value="NO" {...register("accion_correctiva", { required: true })} className="hidden" /> NO
                                         </label>
                                     </div>
+                                    {errors.accion_correctiva && <span className="text-red-500 text-[10px] font-black mt-2 block uppercase">Selección requerida</span>}
                                 </div>
                             </div>
                         </div>
@@ -922,7 +935,6 @@ export default function CrearCapacitacionPage() {
                     </div>
                 </div>
 
-                {/* SECTION 4: EXPOSITOR */}
                 <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700">
                     <div className="flex items-center gap-2 mb-6 text-blue-700 dark:text-blue-400 font-bold border-b border-gray-50 dark:border-slate-700 pb-3">
                         <Briefcase size={20} /> <h3 className="uppercase tracking-widest text-sm">Información del Expositor</h3>
@@ -981,7 +993,6 @@ export default function CrearCapacitacionPage() {
                     </div>
                 </div>
 
-                {/* SECTION 5: TABLA DE PARTICIPANTES */}
                 <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700" >
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 border-b border-gray-50 dark:border-slate-700 pb-4">
                         <div className="flex items-center gap-2 text-blue-700 dark:text-blue-400 font-bold">
@@ -999,106 +1010,130 @@ export default function CrearCapacitacionPage() {
                         </div>
                     </div>
 
-                    <div className="overflow-x-auto -mx-6 px-6">
-                        <div className="min-w-[800px]">
-                            <div className="grid grid-cols-12 gap-3 text-[10px] font-black text-gray-400 dark:text-slate-500 mb-3 uppercase tracking-widest px-4">
-                                <div className="col-span-1 text-center font-black">#</div>
-                                <div className="col-span-2">DNI / ID</div>
-                                <div className="col-span-4">Nombres y Apellidos</div>
-                                <div className="col-span-2">Área</div>
-                                <div className="col-span-2">Cargo</div>
-                                <div className="col-span-1 text-center">Firma</div>
-                            </div>
-
-                            <div className="space-y-2">
-                                {fields.map((item, index) => {
-                                    const { opcionesNombres, opcionesDNI, cargosDisponibles, areasDisponibles } = getOpcionesFila(index);
-                                    return (
-                                        <div key={item.id} className="grid grid-cols-12 gap-3 items-center bg-gray-50/50 dark:bg-slate-900/40 p-2 rounded-2xl border border-gray-100 dark:border-slate-800 hover:bg-white dark:hover:bg-slate-900 transition-all group">
-                                            <div className="col-span-1 font-black text-center text-gray-300 dark:text-slate-700">{index + 1}</div>
-                                            <div className="col-span-2">
-                                                <Controller name={`participantes.${index}.dni`} control={control} render={({ field }) => (
-                                                    <Select
-                                                        {...field}
-                                                        options={opcionesDNI}
-                                                        placeholder="DNI..."
-                                                        onChange={(val: SelectOption | null) => {
-                                                            field.onChange(val?.value);
-                                                            if (val?.datos) autocompletarFila(index, val.datos);
-                                                        }}
-                                                        value={opcionesDNI.find(op => op.value === field.value)}
-                                                        styles={customStyles}
-                                                    />
-                                                )} />
-                                            </div>
-                                            <div className="col-span-4">
-                                                <Controller name={`participantes.${index}.apellidos_nombres`} control={control} render={({ field }) => (
-                                                    <Select
-                                                        {...field}
-                                                        options={opcionesNombres}
-                                                        placeholder="Buscar por nombre..."
-                                                        onChange={(val: SelectOption | null) => {
-                                                            field.onChange(val?.label);
-                                                            if (val?.datos) autocompletarFila(index, val.datos);
-                                                        }}
-                                                        value={opcionesNombres.find(op => op.label === field.value)}
-                                                        styles={customStyles}
-                                                    />
-                                                )} />
-                                            </div>
-                                            <div className="col-span-2">
-                                                <Controller name={`participantes.${index}.area`} control={control} render={({ field }) => (
-                                                    <Select
-                                                        {...field}
-                                                        options={areasDisponibles}
-                                                        placeholder="Área"
-                                                        value={areasDisponibles.find(a => a.value === field.value)}
-                                                        styles={customStyles}
-                                                    />
-                                                )} />
-                                            </div>
-                                            <div className="col-span-2">
-                                                <Controller name={`participantes.${index}.cargo`} control={control} render={({ field }) => (
-                                                    <Select
-                                                        {...field}
-                                                        options={cargosDisponibles}
-                                                        placeholder="Cargo"
-                                                        value={cargosDisponibles.find(op => op.value === field.value)}
-                                                        styles={customStyles}
-                                                    />
-                                                )} />
-                                            </div>
-                                            <div className="col-span-1 flex justify-center gap-1.5 opacity-60 group-hover:opacity-100 transition-opacity">
-                                                {watch(`participantes.${index}.firma_url`) ? (
-                                                    <div className="p-1.5 bg-green-100 dark:bg-green-900/30 text-green-600 rounded-lg"><CheckCircle2 size={18} /></div>
-                                                ) : (
-                                                    <>
-                                                        <label className="cursor-pointer p-1.5 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-lg hover:text-blue-600 transition-colors">
-                                                            <input type="file" className="hidden" onChange={(e) => handleUploadFirma(index, e)} />
-                                                            <UploadCloud size={18} />
-                                                        </label>
-                                                        <button type="button" onClick={() => abrirModalFirma(index)} className="p-1.5 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-lg hover:text-purple-600 transition-colors">
-                                                            <PenTool size={18} />
-                                                        </button>
-                                                    </>
-                                                )}
-                                                <button type="button" onClick={() => remove(index)} className="p-1.5 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-lg hover:text-red-500 transition-colors">
-                                                    <X size={18} />
-                                                </button>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-
-                            <button type="button" onClick={() => append({ numero: 0, dni: '', apellidos_nombres: '', area: '', cargo: '', genero: 'M', condicion: '' })} className="mt-4 w-full py-4 border-2 border-dashed border-gray-200 dark:border-slate-800 rounded-2xl flex items-center justify-center gap-2 text-gray-400 dark:text-slate-600 hover:border-blue-500 hover:text-blue-600 dark:hover:text-blue-400 transition-all font-bold uppercase text-[10px] tracking-[0.2em]">
-                                <UserPlus size={18} /> AGREGAR NUEVO PARTICIPANTE
-                            </button>
-                        </div>
+                    {/* 🟢 AQUÍ TAMBIÉN ESTÁ EL CAMBIO CLAVE DE DISEÑO: Quitamos el div 'overflow-x-auto' que cortaba las listas */}
+                    {/* EL GRID SIN OVERFLOW PARA QUE NO SE CORTE EL MENÚ */}
+                    <div className="hidden md:grid grid-cols-12 gap-2 text-xs font-bold text-gray-500 mb-2 uppercase px-2">
+                        <div className="col-span-1 text-center font-black">#</div>
+                        <div className="col-span-2">DNI / ID</div>
+                        <div className="col-span-3">Nombres y Apellidos</div>
+                        <div className="col-span-2">Área</div>
+                        <div className="col-span-2">Cargo</div>
+                        <div className="col-span-2 text-center">Firma / Acciones</div>
                     </div>
+
+                    <div className="space-y-2">
+                        {fields.map((item, index) => {
+                            const { opcionesNombres, opcionesDNI, cargosDisponibles, areasDisponibles } = getOpcionesFila(index);
+                            return (
+                                <div key={item.id} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center bg-gray-50/50 dark:bg-slate-900/40 p-2 rounded-2xl border border-gray-100 dark:border-slate-800 hover:bg-white dark:hover:bg-slate-900 transition-all group">
+                                    <div className="col-span-1 font-black text-center text-gray-300 dark:text-slate-700">{index + 1}</div>
+                                    <div className="col-span-2">
+                                        <Controller name={`participantes.${index}.dni`} control={control} render={({ field }) => (
+                                            <Select
+                                                {...field}
+                                                options={opcionesDNI}
+                                                placeholder="DNI..."
+                                                onChange={(val: SelectOption | null) => {
+                                                    field.onChange(val?.value);
+                                                    if (val?.datos) autocompletarFila(index, val.datos);
+                                                }}
+                                                value={opcionesDNI.find(op => op.value === field.value)}
+                                                styles={customStyles}
+                                                noOptionsMessage={() => "No encontrado"}
+                                            />
+                                        )} />
+                                    </div>
+                                    <div className="col-span-3">
+                                        <Controller name={`participantes.${index}.apellidos_nombres`} control={control} render={({ field }) => (
+                                            <Select
+                                                {...field}
+                                                options={opcionesNombres}
+                                                placeholder="Buscar por nombre..."
+                                                onChange={(val: SelectOption | null) => {
+                                                    field.onChange(val?.label);
+                                                    if (val?.datos) autocompletarFila(index, val.datos);
+                                                }}
+                                                value={opcionesNombres.find(op => op.label === field.value)}
+                                                styles={customStyles}
+                                            />
+                                        )} />
+                                    </div>
+                                    <div className="col-span-2">
+                                        <Controller name={`participantes.${index}.area`} control={control} render={({ field }) => (
+                                            <Select
+                                                {...field}
+                                                options={areasDisponibles}
+                                                placeholder="Área"
+                                                onChange={(val: SelectOption | null) => {
+                                                    field.onChange(val?.value);
+                                                    setValue(`participantes.${index}.cargo`, '');
+                                                }}
+                                                value={areasDisponibles.find(a => a.value === field.value)}
+                                                styles={customStyles}
+                                            />
+                                        )} />
+                                    </div>
+                                    <div className="col-span-2">
+                                        <Controller name={`participantes.${index}.cargo`} control={control} render={({ field }) => (
+                                            <Select
+                                                {...field}
+                                                isDisabled={!watch(`participantes.${index}.area`)}
+                                                options={cargosDisponibles}
+                                                placeholder="Cargo"
+                                                onChange={(val: SelectOption | null) => field.onChange(val?.value)}
+                                                value={cargosDisponibles.find(op => op.value === field.value)}
+                                                styles={customStyles}
+                                            />
+                                        )} />
+                                    </div>
+
+                                    {/* 🟢 ZONA DE FIRMAS (Ajustada para Crear, sin validaciones de Auditor) */}
+                                    <div className="col-span-2 flex justify-center items-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
+                                        {watch(`participantes.${index}.firma_url`) ? (
+                                            <div className="flex items-center gap-1">
+                                                <div className="p-1.5 bg-green-100 dark:bg-green-900/30 text-green-600 rounded-lg" title="Firma Registrada">
+                                                    <CheckCircle2 size={16} />
+                                                </div>
+                                                {/* 🟢 Solo permite borrar si la firma NO es maestra (se hizo en el momento) */}
+                                                {!(participantesWatch[index] as any).es_maestra && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setValue(`participantes.${index}.firma_url`, '', { shouldValidate: true, shouldDirty: true })}
+                                                        className="p-1.5 bg-orange-50 dark:bg-orange-900/30 text-orange-500 hover:text-orange-600 rounded-lg transition-colors"
+                                                        title="Borrar y volver a firmar"
+                                                    >
+                                                        <X size={16} />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <label className={`cursor-pointer p-1.5 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-lg hover:text-blue-600 transition-colors ${uploadingRow === index ? 'opacity-50 pointer-events-none' : ''}`} title="Subir firma">
+                                                    <input type="file" className="hidden" disabled={uploadingRow === index} onChange={(e) => handleUploadFirma(index, e)} />
+                                                    {uploadingRow === index ? <Loader2 size={16} className="animate-spin text-blue-500" /> : <UploadCloud size={16} />}
+                                                </label>
+                                                <button type="button" onClick={() => abrirModalFirma(index)} className="p-1.5 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-lg hover:text-purple-600 transition-colors" title="Dibujar firma">
+                                                    <PenTool size={16} />
+                                                </button>
+                                            </>
+                                        )}
+
+                                        {/* SEPARADOR Y BOTÓN DE BORRAR FILA */}
+                                        <div className="w-px h-5 bg-gray-200 dark:bg-slate-700 mx-1"></div>
+                                        <button type="button" onClick={() => remove(index)} className="p-1.5 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-lg hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-colors" title="Eliminar trabajador">
+                                            <Trash2 size={16} />
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    <button type="button" onClick={() => append({ numero: 0, dni: '', apellidos_nombres: '', area: '', cargo: '', genero: 'M', condicion: '' })} className="mt-4 w-full py-4 border-2 border-dashed border-gray-200 dark:border-slate-800 rounded-2xl flex items-center justify-center gap-2 text-gray-400 dark:text-slate-600 hover:border-blue-500 hover:text-blue-600 dark:hover:text-blue-400 transition-all font-bold uppercase text-[10px] tracking-[0.2em]">
+                        <UserPlus size={18} /> AGREGAR NUEVO PARTICIPANTE
+                    </button>
                 </div>
 
-                {/* SECTION 6: EVIDENCIAS FOTOGRÁFICAS */}
                 <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700">
                     <div className="flex items-center gap-2 mb-6 text-blue-700 dark:text-blue-400 font-bold border-b border-gray-50 dark:border-slate-700 pb-3">
                         <Camera size={20} /> <h3 className="uppercase tracking-widest text-sm">Evidencias Fotográficas</h3>
