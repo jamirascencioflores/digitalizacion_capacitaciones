@@ -503,15 +503,23 @@ export const generarPDFUniversal = async (
     "Seguridad",
     "Inocuidad",
     "Cadena",
-    "Medio Ambiente",
-    "Responsabilidad Social",
+    "Med. Ambiente",
+    "Resp. Social",
+    "Gobernanza",
     "Otros",
   ];
   drawCheckRow(
     currentY,
-    cats.map((c) => ({ label: c, checked: data.categoria === c })),
+    cats.map((c) => ({
+      label: c,
+      // Evaluamos si coincide (Aceptando las versiones largas o cortas)
+      checked:
+        data.categoria === c ||
+        (c === "Med. Ambiente" && data.categoria === "Medio Ambiente") ||
+        (c === "Resp. Social" && data.categoria === "Responsabilidad Social"),
+    })),
     marginLeft + 22,
-    6,
+    6, // 🟢 Reduje un poquito el espaciado de 6 a 3 para que todos entren perfectos en el ancho de la hoja
   );
   currentY += rowHeight;
 

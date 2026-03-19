@@ -19,6 +19,9 @@ model empresa {
   actividad_economica String @default("Principal - 0150") @db.VarChar(50)
   codigo_formato      String @default("FPGC 4.8 RH") @db.VarChar(20)
   revision_actual     String @default("06") @db.VarChar(10) 
+  
+  bot_activo          Boolean @default(false) // Este será el Público (Landing)
+  bot_interno_activo  Boolean @default(false) // 🟢 NUEVO: Este será el Interno (Dashboard)
 }
 
 // --------------------------------------
@@ -223,4 +226,17 @@ model solicitudes_contacto {
   mensaje        String   @db.Text
   fecha_envio    DateTime @default(now())
   estado         String   @default("Pendiente") // Sirve para que el Admin marque si ya los contactó
+}
+
+// --------------------------------------
+// 10. NOTIFICACIONES ADMIN
+// --------------------------------------
+
+model Notificacion {
+  id              Int      @id @default(autoincrement())
+  mensaje         String   @db.Text
+  tipo            String   // Ej: "CAPACITACION", "AUDITORIA", "SISTEMA"
+  leida           Boolean  @default(false)
+  fecha_creacion  DateTime @default(now())
+  url_destino     String?  // Ej: "/dashboard/capacitaciones/15"
 }

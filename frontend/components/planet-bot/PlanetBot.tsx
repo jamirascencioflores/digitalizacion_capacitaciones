@@ -4,6 +4,8 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { X, Send, Sparkles, Info } from 'lucide-react';
 import SuggestedQuestions, { QuestionItem } from './SuggestedQuestions';
 import TermsModal from './TermsModal';
+import { usePathname } from 'next/navigation';
+import api from '@/services/api';
 
 const botImage = '/Planet_bot_Formapp.png';
 
@@ -16,8 +18,6 @@ const FORMAPP_TIPS: string[] = [
     "🌍 Menos papel significa procesos más sostenibles y eficientes.",
     "✨ Personaliza tus formularios con la identidad de tu marca."
 ];
-
-import { usePathname } from 'next/navigation';
 
 interface Message {
     id: number;
@@ -35,15 +35,56 @@ const PlanetBot: React.FC<PlanetBotProps> = ({ currentView: propView }) => {
     const [isOpen, setIsOpen] = useState<boolean>(false);
     const [mounted, setMounted] = useState(false);
 
+    // 🟢 ESTADO MAESTRO PARA MOSTRAR/OCULTAR EL BOT
+    const [mostrarBot, setMostrarBot] = useState<boolean>(false);
+
     useEffect(() => {
         setMounted(true);
     }, []);
 
-    // determinar la vista actual basada en la ruta si no se envía por prop
+    // 🟢 Determinar la vista actual basada en la ruta (Movido arriba para usarlo en el useEffect)
     const currentView = propView || (
         pathname.includes('/dashboard') ? 'admin' :
             pathname.includes('/login') ? 'login' : 'landing'
     );
+
+    // 🟢 LECTURA DE BASE DE DATOS Y ESCUCHA DE EVENTOS
+    useEffect(() => {
+        const fetchBotStatus = async () => {
+            try {
+                const { data } = await api.get('/empresa');
+                if (currentView === 'admin') {
+                    setMostrarBot(data.bot_interno_activo);
+                } else {
+                    setMostrarBot(data.bot_activo);
+                }
+            } catch (error) {
+                console.error("Error verificando estado del bot:", error);
+                setMostrarBot(false);
+            }
+        };
+        fetchBotStatus(); // Primera lectura al cargar
+
+        // 🟢 NUEVO: Que el bot pregunte cada 1 minuto (60000 ms) a la base de datos
+        const intervaloBot = setInterval(() => {
+            fetchBotStatus();
+        }, 60000);
+
+        const handleBotChange = (e: any) => {
+            const { tipo, estado } = e.detail;
+            if (currentView === 'admin' && tipo === 'interno') setMostrarBot(estado);
+            else if (currentView !== 'admin' && tipo === 'publico') setMostrarBot(estado);
+        };
+
+        window.addEventListener('bot_global_changed', handleBotChange);
+
+        // 🟢 Importante: Limpiar el intervalo cuando el usuario se vaya
+        return () => {
+            window.removeEventListener('bot_global_changed', handleBotChange);
+            clearInterval(intervaloBot);
+        };
+    }, [currentView]);
+
     const [showTerms, setShowTerms] = useState<boolean>(false);
     const [messages, setMessages] = useState<Message[]>([
         {
@@ -216,6 +257,9 @@ const PlanetBot: React.FC<PlanetBotProps> = ({ currentView: propView }) => {
             handleSendMessage(input);
         }
     };
+
+    // 🟢 Si la Base de Datos dice "Falso", no renderizamos NADA.
+    if (!mostrarBot) return null;
 
     return (
         <>

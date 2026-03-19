@@ -24,6 +24,7 @@ import {
     Loader2,
     Inbox // 🟢 NUEVO: Importamos el ícono de la bandeja
 } from 'lucide-react';
+import api from '@/services/api';
 
 interface SidebarProps {
     isOpen: boolean;
@@ -40,13 +41,60 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     const { theme, setTheme } = useTheme();
     const [mounted, setMounted] = useState(false);
 
-    // Estado local visual para otros toggle
+    // 🟢 ESTADOS VISUALES
     const [notifActive, setNotifActive] = useState(true);
-    const [botActive, setBotActive] = useState(true);
+    const [botPublico, setBotPublico] = useState(false);
+    const [botInterno, setBotInterno] = useState(false);
 
     useEffect(() => {
         setMounted(true);
-    }, []);
+        const savedNotif = localStorage.getItem('pref_notif');
+        if (savedNotif !== null) setNotifActive(savedNotif === 'true');
+
+        const cargarConfigEmpresa = async () => {
+            if (userRole === 'administrador') {
+                try {
+                    const { data } = await api.get('/empresa');
+                    setBotPublico(data.bot_activo);
+                    setBotInterno(data.bot_interno_activo);
+                } catch (error) {
+                    console.error("Error cargando config bot:", error);
+                }
+            }
+        };
+        cargarConfigEmpresa();
+    }, [userRole]);
+
+    const toggleNotificaciones = () => {
+        const newVal = !notifActive;
+        setNotifActive(newVal);
+        localStorage.setItem('pref_notif', String(newVal));
+        window.dispatchEvent(new Event('storage_pref_changed'));
+    };
+
+    // 🟢 NUEVO: Función dinámica para apagar/encender
+    const toggleBot = async (tipo: 'publico' | 'interno') => {
+        const isPublico = tipo === 'publico';
+        const newVal = isPublico ? !botPublico : !botInterno;
+
+        // Cambio visual instantáneo
+        if (isPublico) setBotPublico(newVal);
+        else setBotInterno(newVal);
+
+        try {
+            await api.put('/empresa/toggle-bot', { tipo, estado: newVal });
+
+            // Avisamos a toda la pantalla del cambio
+            window.dispatchEvent(new CustomEvent('bot_global_changed', {
+                detail: { tipo, estado: newVal }
+            }));
+        } catch (error) {
+            console.error("Error al cambiar estado del bot:", error);
+            // Revertimos si falla
+            if (isPublico) setBotPublico(!newVal);
+            else setBotInterno(!newVal);
+        }
+    };
 
     const handleLinkClick = (path: string) => {
         onClose();
@@ -185,7 +233,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                                 </div>
 
                                 {/* Notificaciones */}
-                                <div className="flex items-center justify-between py-2 px-4 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors cursor-pointer group" onClick={() => setNotifActive(!notifActive)}>
+                                <div className="flex items-center justify-between py-2 px-4 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors cursor-pointer group" onClick={toggleNotificaciones}>
                                     <div className="flex items-center gap-3 text-gray-500 dark:text-gray-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
                                         <BellRing size={20} />
                                         <span className="text-sm font-medium">Notificaciones</span>
@@ -195,14 +243,25 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                                     </button>
                                 </div>
 
-                                {/* Bot */}
-                                <div className="flex items-center justify-between py-2 px-4 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors cursor-pointer group" onClick={() => setBotActive(!botActive)}>
+                                {/* Bot Público (Landing) */}
+                                <div className="flex items-center justify-between py-2 px-4 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors cursor-pointer group" onClick={() => toggleBot('publico')}>
                                     <div className="flex items-center gap-3 text-gray-500 dark:text-gray-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
                                         <Bot size={20} />
-                                        <span className="text-sm font-medium">Planet Bot</span>
+                                        <span className="text-sm font-medium">Bot Público (Web)</span>
                                     </div>
-                                    <button className={`w-10 h-5 rounded-full relative transition-colors focus:outline-none shadow-inner ${botActive ? 'bg-blue-500 border-blue-600' : 'bg-gray-200 border-gray-300 dark:bg-slate-700 dark:border-slate-600'} border`}>
-                                        <div className={`w-4 h-4 bg-white rounded-full absolute top-px shadow-sm transition-transform ${botActive ? 'right-0.5' : 'left-0.5'}`}></div>
+                                    <button className={`w-10 h-5 rounded-full relative transition-colors focus:outline-none shadow-inner ${botPublico ? 'bg-blue-500 border-blue-600' : 'bg-gray-200 border-gray-300 dark:bg-slate-700 dark:border-slate-600'} border`}>
+                                        <div className={`w-4 h-4 bg-white rounded-full absolute top-px shadow-sm transition-transform ${botPublico ? 'right-0.5' : 'left-0.5'}`}></div>
+                                    </button>
+                                </div>
+
+                                {/* Bot Interno (Dashboard) */}
+                                <div className="flex items-center justify-between py-2 px-4 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors cursor-pointer group" onClick={() => toggleBot('interno')}>
+                                    <div className="flex items-center gap-3 text-gray-500 dark:text-gray-400 group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">
+                                        <Bot size={20} />
+                                        <span className="text-sm font-medium">Bot Interno (Panel)</span>
+                                    </div>
+                                    <button className={`w-10 h-5 rounded-full relative transition-colors focus:outline-none shadow-inner ${botInterno ? 'bg-purple-500 border-purple-600' : 'bg-gray-200 border-gray-300 dark:bg-slate-700 dark:border-slate-600'} border`}>
+                                        <div className={`w-4 h-4 bg-white rounded-full absolute top-px shadow-sm transition-transform ${botInterno ? 'right-0.5' : 'left-0.5'}`}></div>
                                     </button>
                                 </div>
                             </div>

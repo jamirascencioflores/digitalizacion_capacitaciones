@@ -1,22 +1,13 @@
 // backend/src/controllers/empresa.controller.js
 const prisma = require("../utils/db");
 
-// Obtener la configuración actual (para mostrar en el frontend)
+// Obtener la configuración actual
 const obtenerConfiguracion = async (req, res) => {
   try {
-    // Buscamos la primera fila (ID 1)
     let empresa = await prisma.empresa.findFirst();
-
-    // Si no existe (es la primera vez), la creamos con los defaults del Schema
     if (!empresa) {
-      empresa = await prisma.empresa.create({
-        data: {
-          // Prisma usará los @default que definimos en el schema
-          // nombre: "AGRICOLA PAMPA BAJA...", ruc: "...", etc.
-        },
-      });
+      empresa = await prisma.empresa.create({ data: {} });
     }
-
     res.json(empresa);
   } catch (error) {
     console.error(error);
@@ -24,20 +15,49 @@ const obtenerConfiguracion = async (req, res) => {
   }
 };
 
-// Actualizar datos (ej: cambiar Revisión 06 a 07)
+// Actualizar configuración general
 const actualizarConfiguracion = async (req, res) => {
   try {
     const { id_empresa, ...datos } = req.body;
-
     const actualizada = await prisma.empresa.update({
       where: { id_empresa: Number(id_empresa) },
       data: datos,
     });
-
     res.json({ mensaje: "Configuración actualizada", data: actualizada });
   } catch (error) {
     res.status(500).json({ error: "Error al actualizar" });
   }
 };
 
-module.exports = { obtenerConfiguracion, actualizarConfiguracion };
+// 🟢 Función dinámica para ambos botones del Bot
+const toggleBotGlobal = async (req, res) => {
+  try {
+    // Recibimos qué bot queremos cambiar ('publico' o 'interno') y su nuevo estado
+    const { tipo, estado } = req.body;
+    const empresa = await prisma.empresa.findFirst();
+
+    if (!empresa)
+      return res.status(404).json({ error: "Empresa no encontrada" });
+
+    // Preparamos qué columna vamos a actualizar
+    const dataToUpdate = {};
+    if (tipo === "publico") dataToUpdate.bot_activo = Boolean(estado);
+    if (tipo === "interno") dataToUpdate.bot_interno_activo = Boolean(estado);
+
+    const actualizada = await prisma.empresa.update({
+      where: { id_empresa: empresa.id_empresa },
+      data: dataToUpdate,
+    });
+
+    res.json({ mensaje: "Estado del bot actualizado", data: actualizada });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Error al actualizar el bot" });
+  }
+};
+
+module.exports = {
+  obtenerConfiguracion,
+  actualizarConfiguracion,
+  toggleBotGlobal, // 🟢 No olvides exportarlo
+};

@@ -3,17 +3,17 @@ const { Router } = require("express");
 const {
   obtenerConfiguracion,
   actualizarConfiguracion,
+  toggleBotGlobal,
 } = require("../controllers/empresa.controller");
 
-// 🟢 CORRECCIÓN: Agregamos llaves { } para sacar la función del objeto
 const { verificarToken } = require("../middlewares/auth.middleware");
 
 const router = Router();
 
-// GET /api/empresa (Trae RUC, Revisión, Direcciones)
-router.get("/", verificarToken, obtenerConfiguracion);
+router.get("/", obtenerConfiguracion);
 
-// PUT /api/empresa (Para editar la revisión o dirección)
 router.put("/", verificarToken, actualizarConfiguracion);
+
+router.put("/toggle-bot", verificarToken, toggleBotGlobal);
 
 module.exports = router;

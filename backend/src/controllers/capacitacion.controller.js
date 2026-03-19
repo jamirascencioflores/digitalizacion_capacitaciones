@@ -194,6 +194,18 @@ const crearCapacitacion = async (req, res) => {
       include: { participantes: true, documentos: true },
     });
 
+    try {
+      await prisma.notificacion.create({
+        data: {
+          mensaje: `Se ha registrado una nueva capacitación: "${nueva.tema_principal || "Tema no especificado"}"`,
+          tipo: "CAPACITACION",
+          url_destino: `/dashboard/capacitaciones/${nueva.id_capacitacion}`, // 🟢 Cambiado a nueva.id
+        },
+      });
+    } catch (errorNotificacion) {
+      console.error("Error al generar la notificación:", errorNotificacion);
+    }
+
     res.status(201).json({ mensaje: "Registrado con éxito", data: nueva });
   } catch (error) {
     // 🔴 LIMPIEZA DE SEGURIDAD: Si algo falló antes de terminar, borramos los archivos que Multer dejó
