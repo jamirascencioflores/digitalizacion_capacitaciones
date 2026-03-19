@@ -18,24 +18,22 @@ export const uploadImageToLocal = async (file: File): Promise<string> => {
 };
 
 // 2. Subir Base64 (Signature Pad) - ¡NUEVA!
-export const uploadBase64 = async (
-  base64Data: string,
-  filename: string
-): Promise<string> => {
-  // Convertir el string base64 a un objeto File real
-  const arr = base64Data.split(",");
-  const mimeMatch = arr[0].match(/:(.*?);/);
-  const mime = mimeMatch ? mimeMatch[1] : "image/png";
-  const bstr = atob(arr[1]);
-  let n = bstr.length;
-  const u8arr = new Uint8Array(n);
+export const uploadBase64 = async (base64: string, fileName: string) => {
+  try {
+    // Convertimos el base64 a un Blob explícitamente como image/webp
+    const res = await fetch(base64);
+    const blob = await res.blob();
+    const file = new File([blob], fileName, { type: "image/webp" });
 
-  while (n--) {
-    u8arr[n] = bstr.charCodeAt(n);
+    const formData = new FormData();
+    formData.append("file", file);
+
+    // 🟢 Si sigues en Cloudinary por ahora, asegúrate de NO enviar
+    // parámetros de transformación en el cuerpo del POST.
+    const response = await api.post("/uploads", formData);
+    return response.data.url;
+  } catch (error) {
+    console.error("Error en upload:", error);
+    return null;
   }
-
-  const file = new File([u8arr], filename, { type: mime });
-
-  // Reutilizamos la función de arriba para subirlo
-  return await uploadImageToLocal(file);
 };

@@ -121,10 +121,17 @@ export default function TrabajadoresPage() {
     const handleUploadFirma = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
-        setUploadingFirma(true);
+
+        setUploadingFirma(true); // 🟢 Encendemos el loader
+
         try {
-            const url = await uploadImageToLocal(file);
-            if (url) setValue('firma_url', url);
+            const webpFile = await convertirAWebp(file);
+            const url = await uploadImageToLocal(webpFile);
+            if (url) {
+                console.log("URL de la firma maestra subida con éxito:", url);
+                setValue('firma_url', url);
+            }
+
         } catch (error) {
             console.error(error);
             alert("Error subiendo firma");
@@ -185,6 +192,30 @@ export default function TrabajadoresPage() {
         } finally {
             setSubiendoExcel(false);
         }
+    };
+
+    const convertirAWebp = (file: File): Promise<File> => {
+        return new Promise((resolve, reject) => {
+            const img = new window.Image();
+            img.src = URL.createObjectURL(file);
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) return reject('No se pudo crear el canvas');
+
+                ctx.drawImage(img, 0, 0);
+
+                canvas.toBlob((blob) => {
+                    if (blob) {
+                        const newName = file.name.replace(/\.[^/.]+$/, "") + ".webp";
+                        resolve(new File([blob], newName, { type: 'image/webp' }));
+                    } else reject('Error WebP');
+                }, 'image/webp', 0.8);
+            };
+            img.onerror = error => reject(error);
+        });
     };
 
     // Filtrado y Paginación

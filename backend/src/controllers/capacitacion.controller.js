@@ -37,6 +37,17 @@ const crearCapacitacion = async (req, res) => {
     };
 
     const nueva = await CapacitacionService.create(payload, usuarioId);
+    try {
+      await prisma.notificacion.create({
+        data: {
+          mensaje: `Se ha registrado una nueva capacitación: "${nueva.tema_principal || "Tema no especificado"}"`,
+          tipo: "CAPACITACION",
+          url_destino: `/dashboard/capacitaciones/${nueva.id_capacitacion}`, // 🟢 Cambiado a nueva.id
+        },
+      });
+    } catch (errorNotificacion) {
+      console.error("Error al generar la notificación:", errorNotificacion);
+    }
     res.status(201).json({ mensaje: "Registrado con éxito", data: nueva });
   } catch (error) {
     FileService.clearLocalFiles(req.files);

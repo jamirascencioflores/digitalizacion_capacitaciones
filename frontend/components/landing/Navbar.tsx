@@ -56,7 +56,7 @@ export default function Navbar() {
                 <div className="flex justify-between items-center h-full">
 
                     {/* logotipo */}
-                    <Link href="/#inicio" className="flex-shrink-0 flex items-center gap-2 cursor-pointer transition hover:opacity-80">
+                    <Link href="/#inicio" className="shrink-0 flex items-center gap-2 cursor-pointer transition hover:opacity-80">
                         <div className={`p-2 rounded-lg transition-colors ${isScrolled ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30' : 'bg-white/10 text-white backdrop-blur-sm border border-white/20'}`}>
                             <ShieldCheck size={28} />
                         </div>

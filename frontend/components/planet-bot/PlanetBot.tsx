@@ -10,6 +10,7 @@ import TermsModal from './TermsModal';
 import ChatWindow from './ChatWindow';
 import BotNotification from './BotNotification';
 import FloatingButton from './FloatingButton';
+import api from '@/services/api';
 
 const botImage = '/Planet_bot_Formapp.png';
 
@@ -38,6 +39,56 @@ const PlanetBot: React.FC<PlanetBotProps> = ({ currentView: propView }) => {
     const pathname = usePathname();
     const [isOpen, setIsOpen] = useState<boolean>(false);
     const [mounted, setMounted] = useState(false);
+    // 🟢 ESTADO MAESTRO PARA MOSTRAR/OCULTAR EL BOT
+    const [mostrarBot, setMostrarBot] = useState<boolean>(false);
+
+    // 🟢 Determinar la vista actual basada en la ruta
+    const currentView = propView || (
+        pathname.includes('/dashboard') ? 'admin' :
+            pathname.includes('/login') ? 'login' : 'landing'
+    );
+
+    useEffect(() => {
+        setMounted(true);
+    }, []);
+
+    // 🟢 LECTURA DE BASE DE DATOS Y ESCUCHA DE EVENTOS
+    useEffect(() => {
+        const fetchBotStatus = async () => {
+            try {
+                const { data } = await api.get('/empresa');
+                if (currentView === 'admin') {
+                    setMostrarBot(data.bot_interno_activo);
+                } else {
+                    setMostrarBot(data.bot_activo);
+                }
+            } catch (error) {
+                console.error("Error verificando estado del bot:", error);
+                setMostrarBot(false);
+            }
+        };
+        fetchBotStatus(); // Primera lectura al cargar
+
+        // 🟢 NUEVO: Que el bot pregunte cada 1 minuto (60000 ms) a la base de datos
+        const intervaloBot = setInterval(() => {
+            fetchBotStatus();
+        }, 60000);
+
+        const handleBotChange = (e: any) => {
+            const { tipo, estado } = e.detail;
+            if (currentView === 'admin' && tipo === 'interno') setMostrarBot(estado);
+            else if (currentView !== 'admin' && tipo === 'publico') setMostrarBot(estado);
+        };
+
+        window.addEventListener('bot_global_changed', handleBotChange);
+
+        // 🟢 Importante: Limpiar el intervalo cuando el usuario se vaya
+        return () => {
+            window.removeEventListener('bot_global_changed', handleBotChange);
+            clearInterval(intervaloBot);
+        };
+    }, [currentView]);
+
     const [showTerms, setShowTerms] = useState<boolean>(false);
     const [messages, setMessages] = useState<Message[]>([
         {
@@ -52,15 +103,6 @@ const PlanetBot: React.FC<PlanetBotProps> = ({ currentView: propView }) => {
     const [notification, setNotification] = useState<string | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
-    useEffect(() => {
-        setMounted(true);
-    }, []);
-
-    const currentView = propView || (
-        pathname.includes('/dashboard') ? 'admin' :
-            pathname.includes('/login') ? 'login' : 'landing'
-    );
-
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     };
@@ -74,6 +116,7 @@ const PlanetBot: React.FC<PlanetBotProps> = ({ currentView: propView }) => {
             setNotification(null);
             return;
         }
+
 
         if (currentView === 'login') {
             setNotification("🔒 Panel de acceso seguro para administradores de Formapp.");
@@ -207,6 +250,9 @@ const PlanetBot: React.FC<PlanetBotProps> = ({ currentView: propView }) => {
             handleSendMessage(input);
         }
     };
+
+    // 🟢 Si la Base de Datos dice "Falso", no renderizamos NADA.
+    if (!mostrarBot) return null;
 
     return (
         <>

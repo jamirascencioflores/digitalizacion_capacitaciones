@@ -17,6 +17,7 @@ const gestionRoutes = require("./routes/gestion.routes");
 const usuarioRoutes = require("./routes/usuario.routes");
 const evaluacionRoutes = require("./routes/evaluacion.routes");
 const contactoRoutes = require("./routes/contacto.routes");
+const notificacionRoutes = require('./routes/notificacion.routes');
 
 const cookieParser = require("cookie-parser");
 const logger = require("./utils/logger");
@@ -60,6 +61,7 @@ app.use("/api/gestion", gestionRoutes);
 app.use("/api/usuarios", usuarioRoutes);
 app.use("/api/evaluaciones", evaluacionRoutes);
 app.use("/api/contacto", contactoRoutes);
+app.use("/api/notificaciones", notificacionRoutes);
 // Ruta de prueba
 app.get("/", (req, res) => {
   res.send("API SST Funcionando 🚀");
