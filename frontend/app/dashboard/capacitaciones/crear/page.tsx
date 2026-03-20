@@ -896,10 +896,10 @@ export default function CrearCapacitacionPage() {
                                     </label>
                                     <div className={`flex p-1 rounded-xl border-2 transition-all ${errors.modalidad ? 'bg-red-50 dark:bg-red-950/20 border-red-500 ring-4 ring-red-500/10' : 'bg-gray-50 dark:bg-slate-900/50 border-transparent hover:border-gray-200 dark:hover:border-slate-700'}`}>
                                         <label className="flex-1 text-center py-2 rounded-lg cursor-pointer font-bold text-sm transition-all has-checked:bg-blue-600 has-checked:text-white text-gray-500">
-                                            <input type="radio" value="Interna" {...register("modalidad", { required: true })} className="hidden" /> Interna
+                                            <input type="radio" value="Interna" {...register("modalidad", { required: true })} className="sr-only" /> Interna
                                         </label>
                                         <label className="flex-1 text-center py-2 rounded-lg cursor-pointer font-bold text-sm transition-all has-checked:bg-blue-600 has-checked:text-white text-gray-500">
-                                            <input type="radio" value="Externa" {...register("modalidad", { required: true })} className="hidden" /> Externa
+                                            <input type="radio" value="Externa" {...register("modalidad", { required: true })} className="sr-only" /> Externa
                                         </label>
                                     </div>
                                     {errors.modalidad && <span className="text-red-500 text-[10px] font-black mt-2 block uppercase">Selección requerida</span>}
@@ -912,10 +912,10 @@ export default function CrearCapacitacionPage() {
                                     </label>
                                     <div className={`flex p-1 rounded-xl border-2 transition-all ${errors.accion_correctiva ? 'bg-red-50 dark:bg-red-950/20 border-red-500 ring-4 ring-red-500/10' : 'bg-gray-50 dark:bg-slate-900/50 border-transparent hover:border-gray-200 dark:hover:border-slate-700'}`}>
                                         <label className="flex-1 text-center py-2 rounded-lg cursor-pointer font-bold text-sm transition-all has-checked:bg-red-500 has-checked:text-white text-gray-500">
-                                            <input type="radio" value="SI" {...register("accion_correctiva", { required: true })} className="hidden" /> SI
+                                            <input type="radio" value="SI" {...register("accion_correctiva", { required: true })} className="sr-only" /> SI
                                         </label>
                                         <label className="flex-1 text-center py-2 rounded-lg cursor-pointer font-bold text-sm transition-all has-checked:bg-green-600 has-checked:text-white text-gray-500">
-                                            <input type="radio" value="NO" {...register("accion_correctiva", { required: true })} className="hidden" /> NO
+                                            <input type="radio" value="NO" {...register("accion_correctiva", { required: true })} className="sr-only" /> NO
                                         </label>
                                     </div>
                                     {errors.accion_correctiva && <span className="text-red-500 text-[10px] font-black mt-2 block uppercase">Selección requerida</span>}
@@ -928,7 +928,7 @@ export default function CrearCapacitacionPage() {
                         <div className={`flex flex-wrap gap-2 p-4 rounded-2xl border-2 transition-all ${errors.centros ? 'bg-red-50 dark:bg-red-950/20 border-red-500 ring-4 ring-red-500/10' : 'bg-gray-50 dark:bg-slate-900/50 border-transparent hover:border-gray-200 dark:hover:border-slate-700'}`}>
                             {['Planta Packing', 'Fundo', 'Campo', 'Auditorio', 'Comedor', 'Sala de Reuniones', 'E-Learning', 'Otros'].map(c => (
                                 <label key={c} className={`px-4 py-2 rounded-xl border-2 font-bold text-xs transition-all cursor-pointer ${watch('centros') === c ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/30' : 'bg-white dark:bg-slate-800 border-gray-100 dark:border-slate-700 text-gray-500 hover:border-blue-500/50'}`}>
-                                    <input type="radio" value={c} {...register("centros", { required: true })} className="hidden" /> {c}
+                                    <input type="radio" value={c} {...register("centros", { required: true })} className="sr-only" /> {c}
                                 </label>
                             ))}
                         </div>
