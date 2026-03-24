@@ -9,3 +9,5 @@ node_modules
 !/uploads/evidencias/.keep
 /logs
 *.log
+serviceAccountKey.json
+formapp-3bd63-6cbb762dbff8.json

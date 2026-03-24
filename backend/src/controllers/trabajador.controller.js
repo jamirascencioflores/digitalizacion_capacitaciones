@@ -4,11 +4,11 @@ const prisma = require("../utils/db");
 const path = require("path");
 const XLSX = require("xlsx");
 const fs = require("fs");
-// 🟢 1. IMPORTAMOS LA UTILIDAD DE CLOUDINARY
+// 🟢 1. IMPORTAMOS LA UTILIDAD DE FIREBASE
 const {
   uploadFromBuffer,
   uploadFromBase64,
-} = require("../utils/uploadToCloudinary");
+} = require("../utils/uploadToFirebase");
 
 // 1. LISTAR TODOS
 const obtenerTrabajadores = async (req, res) => {
@@ -157,10 +157,11 @@ const cargaMasivaFirmas = async (req, res) => {
         const dniExtraido = path.parse(nombreOriginal).name;
 
         if (/^\d{8}$/.test(dniExtraido)) {
-          // Subir a Cloudinary
-          const result = await uploadImage(
+          // Subir a Firebase
+          const result = await uploadFromBuffer(
             archivo.buffer,
             "firmas_trabajadores",
+            archivo.originalname
           );
           const urlPublica = result.secure_url;
 
@@ -356,8 +357,8 @@ const actualizarTrabajador = async (req, res) => {
 
     // Si viene nueva imagen, la subimos
     if (req.file) {
-      console.log("📤 Actualizando firma en Cloudinary...");
-      const result = await uploadImage(req.file.buffer, "firmas_trabajadores");
+      console.log("📤 Actualizando firma en Firebase...");
+      const result = await uploadFromBuffer(req.file.buffer, "firmas_trabajadores", req.file.originalname);
       datos.firma_url = result.secure_url;
     }
 
