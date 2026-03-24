@@ -28,9 +28,8 @@ export const uploadBase64 = async (base64: string, fileName: string) => {
     const formData = new FormData();
     formData.append("file", file);
 
-    // 🟢 Si sigues en Cloudinary por ahora, asegúrate de NO enviar
-    // parámetros de transformación en el cuerpo del POST.
-    const response = await api.post("/uploads", formData);
+    // 🟢 Enviamos al endpoint de Firebase en el backend
+    const response = await api.post("/upload", formData);
     return response.data.url;
   } catch (error) {
     console.error("Error en upload:", error);

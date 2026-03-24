@@ -1,6 +1,6 @@
 // backend/src/controllers/upload.controller.js
 const multer = require("multer");
-const { uploadFromBuffer } = require("../utils/uploadToCloudinary");
+const { uploadFromBuffer } = require("../utils/uploadToFirebase");
 
 // 1. CONFIGURACIÓN MULTER (CAMBIO CLAVE: Memoria, no Disco)
 const storage = multer.memoryStorage();
@@ -16,7 +16,7 @@ const fileFilter = (req, file, cb) => {
 
 const upload = multer({ storage: storage, fileFilter: fileFilter });
 
-// 2. FUNCIÓN DE SUBIDA (Ahora sube a Cloudinary)
+// 2. FUNCIÓN DE SUBIDA (Ahora sube a Firebase)
 const subirArchivo = async (req, res) => {
   try {
     if (!req.file) {
@@ -27,22 +27,23 @@ const subirArchivo = async (req, res) => {
     const carpetaDestino = req.body.folder || "uploads_generales";
 
     console.log(
-      `📤 Subiendo imagen a Cloudinary en la carpeta: ${carpetaDestino}`,
+      `📤 Subiendo imagen a Firebase Storage en la carpeta: ${carpetaDestino}`,
     );
 
     // 🟢 PASO 2: Usar la variable en lugar del texto fijo
     const result = await uploadFromBuffer(req.file.buffer, carpetaDestino);
 
-    console.log("✅ Imagen subida:", result.secure_url);
+    console.log("✅ Imagen subida a Firebase:", result.secure_url);
 
     res.json({
       url: result.secure_url,
       public_id: result.public_id,
     });
   } catch (error) {
-    console.error("❌ Error al subir archivo:", error);
+    console.error("❌ Error al subir archivo a Firebase:", error);
     res.status(500).json({ error: "Error al subir la imagen" });
   }
 };
 
 module.exports = { upload, subirArchivo };
+
