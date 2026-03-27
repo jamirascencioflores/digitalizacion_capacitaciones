@@ -58,6 +58,7 @@ export default function LoginPage() {
       } else {
         setErrorGlobal('No se pudo conectar con el servidor. Verifica tu internet.');
       }
+
     } finally {
       setLoading(false);
     }
@@ -86,14 +87,7 @@ export default function LoginPage() {
         {/* Tarjeta Glassmorphism Profesional */}
         <div className="bg-white/90 backdrop-blur-xl p-8 rounded-3xl shadow-2xl border border-white/50 relative">
 
-          {/* Botón de Regresar (Dentro del Card) */}
-          <button
-            onClick={() => router.push('/')}
-            className="absolute top-4 left-4 flex items-center gap-2 p-2 px-3 text-slate-500 hover:text-blue-700 hover:bg-blue-50/80 rounded-full transition-all group font-medium text-sm"
-          >
-            <ArrowLeft size={18} className="group-hover:-translate-x-0.5 transition-transform" />
-            <span>Volver al sitio</span>
-          </button>
+          {/* Botón de Regresar (Dentro del Card)                {/* Removido botón Volver a petición del usuario */}
 
           <div className="mb-8 text-center">
             <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-500/30 mb-5 transform rotate-3">
@@ -152,10 +146,11 @@ export default function LoginPage() {
               <button
                 type="button"
                 onClick={() => { setShowModal(true); setRecoveryStatus('idle'); setRecoveryUser(''); }}
-                className="text-xs font-semibold text-blue-600 hover:text-blue-700 transition-colors"
+                className="text-xs font-semibold text-blue-600 hover:text-blue-700 transition-all hover:translate-x-1 active:scale-95"
               >
                 ¿Olvidaste tu contraseña?
               </button>
+
             </div>
 
             {errorGlobal && (
@@ -188,68 +183,76 @@ export default function LoginPage() {
 
       </div>
 
-      {/* MODAL DE RECUPERACIÓN (Se mantiene igual) */}
+      {/* MODAL DE RECUPERACIÓN - Refinado con Animación */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
-          <div className="w-full max-w-sm bg-white rounded-xl shadow-2xl overflow-hidden scale-100 animate-in zoom-in-95">
-            <div className="bg-gray-50 px-6 py-4 border-b flex justify-between items-center">
-              <h3 className="font-bold text-gray-800">Recuperar Acceso</h3>
-              <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-red-500"><X size={20} /></button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-md p-4 animate-in fade-in duration-300">
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 slide-in-from-bottom-2 duration-300">
+
+
+            {/* Cabecera Limpia */}
+            <div className="px-6 py-4 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
+              <h3 className="text-lg font-bold text-slate-800">Recuperar Acceso</h3>
+              <button
+                onClick={() => setShowModal(false)}
+                className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+              >
+                <X size={22} />
+              </button>
             </div>
 
-            <div className="p-6 min-h-[280px] flex flex-col justify-center">
+            <div className="p-8 min-h-[300px] flex flex-col justify-center">
               {recoveryStatus === 'loading' ? (
-                <div className="flex flex-col items-center justify-center py-8 animate-in mt-fade-in zoom-in-95 duration-300">
-                  <div className="relative">
-                    <div className="w-16 h-16 border-4 border-blue-50 border-t-blue-600 rounded-full animate-spin" />
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="w-8 h-8 bg-blue-50/50 rounded-full animate-pulse" />
-                    </div>
-                  </div>
-                  <h4 className="mt-6 text-lg font-bold text-slate-800">Procesando...</h4>
-                  <p className="mt-2 text-sm text-slate-500 text-center">
-                    Estamos validando tu información y <br /> preparando el correo de recuperación.
+                <div className="flex flex-col items-center justify-center py-10">
+                  <div className="w-12 h-12 border-4 border-slate-100 border-t-blue-600 rounded-full animate-spin" />
+                  <h4 className="mt-6 text-lg font-bold text-slate-800">Procesando solicitud</h4>
+                  <p className="mt-2 text-sm text-slate-500 text-center leading-relaxed">
+                    Estamos validando tus datos. <br />
+                    Un momento, por favor...
                   </p>
                 </div>
               ) : recoveryStatus === 'success' ? (
-                <div className="text-center py-6 animate-in zoom-in-95 duration-300">
-                  <div className="inline-flex h-20 w-20 items-center justify-center rounded-full bg-green-50 text-green-500 mb-6 shadow-sm border border-green-100/50">
-                    <CheckCircle2 size={40} className="animate-bounce" />
+                <div className="text-center py-4">
+                  <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-green-50 text-green-500 mb-6 border border-green-100 outline outline-4 outline-green-50/50">
+                    <CheckCircle2 size={32} />
                   </div>
-                  <h4 className="text-xl font-bold text-slate-800">¡Solicitud Enviada!</h4>
-                  <p className="text-slate-500 mt-3 text-sm leading-relaxed">
-                    Si el usuario <span className="font-semibold text-slate-700">&quot;{recoveryUser}&quot;</span> está registrado, hemos enviado un enlace a su correo para restablecer la contraseña.
+
+                  <h4 className="text-xl font-bold text-slate-800 tracking-tight">¡Solicitud Enviada!</h4>
+                  <p className="text-slate-500 mt-3 text-sm leading-relaxed px-4">
+                    Si <span className="text-slate-900 font-semibold">{recoveryUser}</span> está en nuestra base de datos, recibirás un correo en breve.
                   </p>
-                  <div className="bg-blue-50/50 rounded-xl p-4 mt-6 border border-blue-100/50">
-                    <p className="text-xs text-blue-700 font-medium">
-                      Revisa tu bandeja de entrada y la carpeta de spam.
+
+                  <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mt-8 flex items-center gap-3 text-left">
+                    <AlertCircle size={20} className="text-blue-600 shrink-0" />
+                    <p className="text-xs text-blue-700 font-medium leading-tight">
+                      Revisa tu bandeja de entrada y spam. El enlace es válido por 60 minutos.
                     </p>
                   </div>
+
                   <button
                     onClick={() => setShowModal(false)}
-                    className="mt-8 w-full py-3 bg-slate-900 text-white rounded-xl font-bold text-sm shadow-lg hover:bg-slate-800 transition-all active:scale-[0.98]"
+                    className="mt-8 w-full py-3.5 bg-slate-900 hover:bg-black text-white rounded-xl font-bold text-sm shadow-lg transition-all hover:scale-[1.02] active:scale-95"
                   >
-                    Volver al Inicio
+                    Entendido, Volver
                   </button>
                 </div>
               ) : (
                 <form onSubmit={handleRecoverySubmit}>
-                  <p className="text-sm text-slate-600 mb-6 font-medium">
-                    Ingresa tu usuario o correo electrónico para recibir las instrucciones de recuperación.
+                  <p className="text-sm text-slate-600 mb-8 leading-relaxed font-medium">
+                    Ingresa tu usuario o correo electrónico y te enviaremos una clave temporal o enlace de recuperación.
                   </p>
 
-                  <div className="space-y-1.5 mb-6">
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Tu Identificación</label>
+                  <div className="space-y-2 mb-8">
+                    <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider ml-1">Tu Identificación</label>
                     <div className="relative group">
-                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-blue-500 transition-colors">
-                        <User size={16} />
+                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-blue-600 transition-colors">
+                        <User size={18} />
                       </div>
                       <input
                         autoFocus
                         value={recoveryUser}
                         onChange={(e) => setRecoveryUser(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-3 text-sm outline-none focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
-                        placeholder="Usuario o correo@ejemplo.com"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-11 pr-4 py-3.5 text-slate-800 font-medium outline-none focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all placeholder:text-slate-400"
+                        placeholder="Ej. usuario@empresa.com"
                       />
                     </div>
                   </div>
@@ -257,16 +260,17 @@ export default function LoginPage() {
                   <button
                     type="submit"
                     disabled={!recoveryUser}
-                    className={`w-full bg-blue-600 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-blue-500/25 transition-all hover:bg-blue-700 hover:shadow-blue-500/40 active:scale-[0.98] ${!recoveryUser ? 'opacity-50 cursor-not-allowed grayscale' : ''
-                      }`}
+                    className={`w-full bg-blue-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-500/20 transition-all hover:bg-blue-700 hover:shadow-blue-500/30 active:scale-[0.98] ${!recoveryUser ? 'opacity-50 cursor-not-allowed grayscale' : ''}`}
                   >
-                    Enviar Solicitud
+                    Enviar Solicitud de Recuperación
                   </button>
 
                   {recoveryStatus === 'error' && (
-                    <div className="mt-4 p-3 bg-red-50 border border-red-100 rounded-lg flex items-center gap-2 text-red-600 animate-in slide-in-from-top-2">
-                      <AlertCircle size={16} />
-                      <p className="text-xs font-semibold">Algo salió mal. Inténtalo de nuevo.</p>
+                    <div className="mt-6 p-4 bg-red-50 border border-red-100 rounded-xl flex items-center gap-3 text-red-600 animate-in slide-in-from-top-2">
+                      <AlertCircle size={20} className="shrink-0" />
+                      <p className="text-xs font-bold leading-tight">
+                        Este usuario o correo no existe. Por favor, verifica tus datos.
+                      </p>
                     </div>
                   )}
                 </form>
@@ -275,6 +279,8 @@ export default function LoginPage() {
           </div>
         </div>
       )}
+
+
     </AnimatedLoginBackground>
   );
 }

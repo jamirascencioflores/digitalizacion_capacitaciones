@@ -251,8 +251,13 @@ const PlanetBot: React.FC<PlanetBotProps> = ({ currentView: propView }) => {
         }
     };
 
-    // 🟢 Si la Base de Datos dice "Falso", no renderizamos NADA.
-    if (!mostrarBot) return null;
+    // 🟢 No mostrar el bot en páginas de autenticación (Login, Recuperación, etc.)
+    const isAuthPage = pathname.includes('/login') ||
+        pathname.includes('/reset-password') ||
+        pathname.includes('/change-password');
+
+    if (isAuthPage || !mostrarBot) return null;
+
 
     return (
         <>
