@@ -1,22 +1,28 @@
-// frontend/context/AuthContext.tsx
 'use client';
 import { createContext, useContext, useEffect, useState } from 'react';
+
 import { Usuario } from '@/types';
 import api from '@/services/api';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
+import SplashScreen from '@/components/shared/SplashScreen';
+
+
 
 interface AuthContextType {
     user: Usuario | null;
     loading: boolean;
+    isNavigating: boolean;
+    setIsNavigating: (val: boolean) => void;
     login: (usuario: string, contrasena: string) => Promise<void>;
     logout: () => void;
-    // 🟢 CORRECCIÓN 1: Usamos Partial<Usuario> en lugar de any
     actualizarUserSesion: (nuevosDatos: Partial<Usuario>) => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
     user: null,
     loading: true,
+    isNavigating: false,
+    setIsNavigating: () => { },
     login: async () => { },
     logout: () => { },
     actualizarUserSesion: () => { },
@@ -25,13 +31,20 @@ const AuthContext = createContext<AuthContextType>({
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const [user, setUser] = useState<Usuario | null>(null);
     const [loading, setLoading] = useState(true);
+    const [isNavigating, setIsNavigating] = useState(false);
+    const [navMessage, setNavMessage] = useState('Preparando tu sesión...');
     const router = useRouter();
+    const pathname = usePathname();
+
+    // 🟢 RESETEAR NAVEGACIÓN CUANDO CAMBIA LA RUTA
+    useEffect(() => {
+        setIsNavigating(false);
+    }, [pathname]);
 
     useEffect(() => {
         const cargarSesion = () => {
             if (typeof window !== 'undefined') {
                 const token = localStorage.getItem('token');
-                // 🟢 CORRECCIÓN 2: Asegúrate de usar la misma clave siempre ('user')
                 const userStored = localStorage.getItem('user');
 
                 if (token && userStored) {
@@ -57,13 +70,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             localStorage.setItem('user', JSON.stringify(usuarioData));
 
             setUser(usuarioData);
+            setNavMessage('Entrando al sistema...');
+            setIsNavigating(true);
 
-            // 🟢 REDIRECCIÓN INTELIGENTE: Si necesita reset, lo mandamos a cambiar clave
-            if (usuarioData.solicita_reset) {
-                router.push('/change-password');
-            } else {
-                router.push('/dashboard');
-            }
+            setTimeout(() => {
+                if (usuarioData.solicita_reset) {
+                    router.push('/change-password');
+                } else {
+                    router.push('/dashboard');
+                }
+            }, 800);
 
         } catch (error: unknown) {
             console.error("Error Login:", error);
@@ -71,32 +87,31 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         }
     };
 
-    // 🟢 CORRECCIÓN 3: Implementación con tipado seguro
+    const logout = () => {
+        setNavMessage('Cerrando sesión...');
+        setIsNavigating(true);
+        setTimeout(() => {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            setUser(null);
+            window.location.href = '/login';
+        }, 1200);
+    };
+
     const actualizarUserSesion = (nuevosDatos: Partial<Usuario>) => {
         if (!user) return;
-
-        // Fusionamos lo que ya había con lo nuevo
         const usuarioActualizado = { ...user, ...nuevosDatos };
-
-        // 1. Actualizamos el estado de React
         setUser(usuarioActualizado);
-
-        // 2. Actualizamos el LocalStorage (clave 'user' para ser consistente)
         localStorage.setItem('user', JSON.stringify(usuarioActualizado));
     };
 
-    const logout = () => {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        setUser(null);
-        window.location.href = '/login';
-    };
-
     return (
-        <AuthContext.Provider value={{ user, loading, login, logout, actualizarUserSesion }}>
+        <AuthContext.Provider value={{ user, loading, isNavigating, setIsNavigating, login, logout, actualizarUserSesion }}>
+            {isNavigating && <SplashScreen message={navMessage} />}
             {children}
         </AuthContext.Provider>
     );
 };
+
 
 export const useAuth = () => useContext(AuthContext);
