@@ -116,9 +116,10 @@ model participantes {
 model documentos {
   id_documento    Int      @id @default(autoincrement())
   id_capacitacion Int
-  tipo            String   @db.VarChar(50) // Ej: "EVIDENCIA", "ACTA"
+  tipo            String   @db.VarChar(50) 
   url             String   @db.Text 
   nombre_archivo  String?  @db.VarChar(255) 
+  path_storage    String?  @db.VarChar(500) 
   fecha_generado  DateTime @default(now())
 
   capacitaciones  capacitaciones @relation(fields: [id_capacitacion], references: [id_capacitacion], onDelete: Cascade)

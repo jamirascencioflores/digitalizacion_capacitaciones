@@ -1,4 +1,3 @@
-// backend/src/controllers/upload.controller.js
 const multer = require("multer");
 const { uploadFromBuffer } = require("../utils/uploadToFirebase");
 
@@ -30,8 +29,13 @@ const subirArchivo = async (req, res) => {
       `📤 Subiendo imagen a Firebase Storage en la carpeta: ${carpetaDestino}`,
     );
 
-    // 🟢 PASO 2: Usar la variable en lugar del texto fijo
-    const result = await uploadFromBuffer(req.file.buffer, carpetaDestino);
+    // 🟢 PASO 2: Pasar el buffer, la carpeta, el nombre original y el mimetype
+    const result = await uploadFromBuffer(
+      req.file.buffer,
+      carpetaDestino,
+      req.file.originalname,
+      req.file.mimetype,
+    );
 
     console.log("✅ Imagen subida a Firebase:", result.secure_url);
 
@@ -46,4 +50,3 @@ const subirArchivo = async (req, res) => {
 };
 
 module.exports = { upload, subirArchivo };
-
