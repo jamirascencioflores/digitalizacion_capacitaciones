@@ -178,6 +178,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                             <div className="my-6 border-t border-gray-100/60 mx-4"></div>
                             <p className="px-5 text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Administración</p>
 
+
                             <Link href="/dashboard/usuarios" className={linkClass('/dashboard/usuarios')} onClick={() => handleLinkClick('/dashboard/usuarios')}>
                                 <Users size={20} className="transition-transform group-hover:scale-110" />
                                 <span>Usuarios</span>

@@ -4,7 +4,9 @@
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { UserPlus, Trash2, X, Save, Shield, User, Lock, Pencil } from 'lucide-react';
+import { UserPlus, Trash2, X, Save, Shield, User, Lock, Pencil, Mail, Loader2, CheckCircle2 } from 'lucide-react';
+import { toast } from 'sonner';
+
 import api from '@/services/api';
 import { AxiosError } from 'axios';
 
@@ -40,6 +42,35 @@ export default function UsuariosPage() {
         rol: 'Auditor',
         estado: true
     });
+
+    // 🟢 NUEVAS VARIABLES PARA MODAL DE INVITACIÓN
+    const [showInviteModal, setShowInviteModal] = useState(false);
+    const [inviteData, setInviteData] = useState({
+        email: '',
+        rol: 'Supervisor'
+    });
+
+
+    const handleFinalInvite = async () => {
+        const id = toast.loading("Enviando invitación...");
+        try {
+            // 1. Enviar la invitación (El backend genera el token y lo envía por correo sin crear usuario aún)
+            await api.post('/auth/invitar', {
+
+                email: inviteData.email,
+                rol: inviteData.rol
+            });
+
+            toast.success("¡Invitación enviada con éxito! 📧", { id });
+            setShowInviteModal(false);
+            // No necesitamos cargarUsuarios() porque el usuario aún no existe en la DB.
+        } catch (error: any) {
+
+            console.error(error);
+            toast.error(error.response?.data?.error || "Error al procesar la invitación", { id });
+        }
+    };
+
 
     const cargarUsuarios = async () => {
         try {
@@ -154,7 +185,24 @@ export default function UsuariosPage() {
             alert(err.response?.data?.error || "Error al guardar usuario");
         }
     };
+    const handleEnviarInvitacionManual = async () => {
+        if (!formData.email && !formData.usuario) {
+            toast.error("Se necesita un correo o usuario para enviar la invitación");
+            return;
+        }
+
+        const id = toast.loading("Enviando correo de recuperación...");
+        try {
+            await api.post('/auth/recuperar', { usuario: formData.email || formData.usuario });
+            toast.success("Correo enviado con éxito 📧", { id });
+        } catch (error) {
+            console.error(error);
+            toast.error("Error al enviar el correo", { id });
+        }
+    };
+
     if (loading) return <div className="p-8">Verificando permisos...</div>;
+
     if (user?.rol.toLowerCase() !== 'administrador') return null;
 
     return (
@@ -164,13 +212,28 @@ export default function UsuariosPage() {
                     <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Gestión de Usuarios</h1>
                     <p className="text-gray-500 dark:text-gray-400">Administra quién tiene acceso al sistema.</p>
                 </div>
-                <button
-                    onClick={abrirModalCrear}
-                    className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition shadow-sm font-medium"
-                >
-                    <UserPlus size={18} />
-                    Nuevo Usuario
-                </button>
+                <div className="flex flex-wrap gap-2">
+                    <button
+                        onClick={() => {
+                            setInviteData({ email: '', rol: 'Supervisor' });
+                            setShowInviteModal(true);
+                        }}
+                        className="flex items-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-xl hover:bg-blue-700 transition shadow-lg shadow-blue-500/20 font-bold active:scale-95"
+                    >
+                        <Mail size={18} />
+                        Invitar Colaborador
+                    </button>
+                    <button
+                        onClick={abrirModalCrear}
+                        className="flex items-center gap-2 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 px-5 py-2.5 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-600 transition font-bold active:scale-95"
+                    >
+                        <UserPlus size={18} />
+                        Nuevo Usuario
+                    </button>
+                </div>
+
+
+
             </div>
 
             <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700 overflow-hidden">
@@ -362,24 +425,27 @@ export default function UsuariosPage() {
                                 </div>
                             )}
 
-                            <div className="pt-2">
-                                <label className="flex justify-between text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                    Contraseña
-                                    {modoEdicion && <span className="text-xs text-gray-400 dark:text-gray-500 font-normal">(Dejar en blanco para mantener actual)</span>}
-                                </label>
-                                <div className="relative">
-                                    <Lock className="absolute left-3 top-2.5 text-gray-400 dark:text-gray-500" size={18} />
-                                    <input
-                                        type="password"
-                                        name="password"
-                                        value={formData.password}
-                                        onChange={handleInputChange}
-                                        className="w-full border dark:border-slate-600 rounded-lg pl-10 pr-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-700 dark:text-white"
-                                        placeholder={modoEdicion ? "••••••••" : "Contraseña requerida"}
-                                        required={!modoEdicion}
-                                    />
+                            {modoEdicion ? null : (
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Contraseña</label>
+                                    <div className="relative group/pass">
+                                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-gray-400 dark:text-gray-500 transition-colors">
+                                            <Lock size={18} />
+                                        </div>
+                                        <input
+                                            type="password"
+                                            name="password"
+                                            value={formData.password}
+                                            onChange={handleInputChange}
+                                            className="w-full border dark:border-slate-600 rounded-lg pl-10 pr-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-700 dark:text-white"
+                                            placeholder="Ingresa la contraseña"
+                                            required
+                                        />
+                                    </div>
                                 </div>
-                            </div>
+                            )}
+
+
 
                             <div className="pt-4 flex gap-3">
                                 <button
@@ -400,6 +466,68 @@ export default function UsuariosPage() {
                     </div>
                 </div>
             )}
+
+            {/* MODAL DE INVITACIÓN SIMPLIFICADO */}
+            {showInviteModal && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-md p-4 animate-in fade-in duration-300">
+                    <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300">
+                        <div className="px-6 py-5 bg-slate-50 dark:bg-slate-900/50 border-b dark:border-slate-700 flex justify-between items-center">
+                            <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                                <Mail className="text-blue-600" size={20} /> Invitar Colaborador
+                            </h3>
+                            <button onClick={() => setShowInviteModal(false)} className="text-slate-400 hover:text-red-500 transition-colors">
+                                <X size={24} />
+                            </button>
+                        </div>
+
+                        <div className="p-8 space-y-6">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">1. Seleccionar Rol</label>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <button
+                                        onClick={() => setInviteData({ ...inviteData, rol: 'Supervisor' })}
+                                        className={`p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 ${inviteData.rol === 'Supervisor' ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20 text-blue-600' : 'border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-500'}`}
+                                    >
+                                        <Shield size={20} />
+                                        <span className="font-bold text-sm">Supervisor</span>
+                                    </button>
+                                    <button
+                                        onClick={() => setInviteData({ ...inviteData, rol: 'Auditor' })}
+                                        className={`p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 ${inviteData.rol === 'Auditor' ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600' : 'border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-500'}`}
+                                    >
+                                        <User size={20} />
+                                        <span className="font-bold text-sm">Auditor</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">2. Correo Electrónico</label>
+                                <div className="relative">
+                                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                    <input
+                                        type="email"
+                                        value={inviteData.email}
+                                        onChange={(e) => setInviteData({ ...inviteData, email: e.target.value })}
+                                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 pl-11 pr-4 py-3 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                                        placeholder="ejemplo@correo.com"
+                                    />
+                                </div>
+                            </div>
+
+                            <button
+                                onClick={handleFinalInvite}
+                                disabled={!inviteData.email}
+                                className="w-full bg-slate-900 dark:bg-blue-600 text-white rounded-xl py-4 font-bold shadow-xl transition-all active:scale-95 disabled:opacity-50 flex justify-center items-center gap-2"
+                            >
+                                Enviar Invitación <CheckCircle2 size={18} />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+
         </div>
     );
 }

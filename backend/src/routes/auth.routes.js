@@ -6,7 +6,7 @@ const router = Router();
 const { login } = require("../controllers/usuario.controller");
 
 // Importas 'solicitarRecuperacion' desde Auth
-const { solicitarRecuperacion, restablecerConToken } = require("../controllers/auth.controller");
+const { solicitarRecuperacion, invitarUsuario, restablecerConToken, verificarToken } = require("../controllers/auth.controller");
 
 const validate = require("../middlewares/validate");
 const { loginSchema } = require("../schemas/auth.schema");
@@ -14,6 +14,8 @@ const { loginSchema } = require("../schemas/auth.schema");
 // Rutas
 router.post("/login", validate(loginSchema), login);
 router.post("/recuperar", solicitarRecuperacion);
+router.post("/invitar", invitarUsuario);
+router.get("/verificar-token", verificarToken);
 router.post("/reset-password", restablecerConToken);
 
 
