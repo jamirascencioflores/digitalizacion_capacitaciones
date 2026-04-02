@@ -26,17 +26,16 @@ const MONTH_MAP = {
 const normalizar = (texto) => {
   return texto
     ? texto
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .trim()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .trim()
     : "";
 };
 
-// 🟢 1. SUBIR PLAN ANUAL (AHORA CON PROTECCIÓN ANTI-AUDITOR)
+// 🟢 1. SUBIR PLAN ANUAL (AHORA CON PROTECCIÓN SaaS y ANTI-AUDITOR)
 const subirPlanAnual = async (req, res) => {
   try {
-    // 🛡️ PROTECCIÓN DE ROL: Un auditor NO puede modificar la base de datos
     if (req.user?.rol === "Auditor") {
       return res.status(403).json({
         error:
@@ -47,10 +46,12 @@ const subirPlanAnual = async (req, res) => {
     if (!req.file)
       return res.status(400).json({ error: "No se subió ningún archivo" });
 
+    // 🟢 NUEVO: Extraemos la empresa del usuario
+    const id_empresa = req.user?.id_empresa || 1;
+
     console.log(`📂 Procesando archivo: ${req.file.originalname}`);
     if (!ExcelJS) ExcelJS = require("exceljs");
     const workbook = new ExcelJS.Workbook();
-
     await workbook.xlsx.load(req.file.buffer);
 
     const sheetPlan = workbook.worksheets[0];
@@ -107,6 +108,7 @@ const subirPlanAnual = async (req, res) => {
             x.txt.includes("eje")
           )
             colIndexes.categoria = x.col;
+
           if (
             colIndexes.mesesStart === 0 &&
             (x.txt.includes("ene") || x.txt.includes("jan"))
@@ -134,7 +136,6 @@ const subirPlanAnual = async (req, res) => {
         colIndexes.tema > 0 ? row.getCell(colIndexes.tema).text?.trim() : null;
       const areaNombre =
         colIndexes.area > 0 ? row.getCell(colIndexes.area).text?.trim() : null;
-
       const temaCheck = normalizar(temaExcel || "");
       const areaCheck = normalizar(areaNombre || "");
 
@@ -164,8 +165,6 @@ const subirPlanAnual = async (req, res) => {
         return;
       }
 
-      let temaFinal = temaExcel;
-      let temarioFinal = "Tema Específico";
       let clasificacion =
         colIndexes.clasificacion > 0
           ? row.getCell(colIndexes.clasificacion).text?.trim()
@@ -193,9 +192,10 @@ const subirPlanAnual = async (req, res) => {
       }
 
       nuevosPlanes.push({
-        tema: temaFinal,
+        id_empresa, // 🟢 NUEVO: Amarramos este plan a la empresa
+        tema: temaExcel,
         objetivo: `Original: ${temaExcel}`,
-        temario: temarioFinal,
+        temario: "Tema Específico",
         areas_objetivo: areaNombre,
         mes_programado: mesDetectado,
         clasificacion: clasificacion,
@@ -203,7 +203,9 @@ const subirPlanAnual = async (req, res) => {
       });
     });
 
-    await prisma.planAnual.deleteMany({});
+    // 🟢 MODIFICACIÓN CRÍTICA: Solo borramos los planes de la empresa actual
+    await prisma.planAnual.deleteMany({ where: { id_empresa } });
+
     if (nuevosPlanes.length > 0) {
       await prisma.planAnual.createMany({ data: nuevosPlanes });
     }
@@ -219,37 +221,39 @@ const subirPlanAnual = async (req, res) => {
   }
 };
 
-// 🟢 2. OBTENER AVANCE (CORREGIDO PARA EVITAR ERROR UNDEFINED)
+// 🟢 2. OBTENER AVANCE (Filtrado por Empresa)
 const obtenerAvance = async (req, res) => {
   try {
-    // 🟢 SOLUCIÓN: Extraemos con seguridad por si req.user no está definido
     const id_usuario = req.user?.id_usuario || null;
     const rol = req.user?.rol || "Desconocido";
+    const id_empresa = req.user?.id_empresa;
 
-    // 🛡️ FILTRO ESTRICTO:
-    // Si es Admin o Auditor, ve TODO ({}).
-    // Si es Supervisor (o no tiene rol), solo ve lo suyo. Si no hay id_usuario, buscamos -1 para que por seguridad no devuelva nada.
+    // 🟢 NUEVO: Filtro general por empresa
+    const filtroSaaS = rol === "SOPORTE" ? {} : { id_empresa };
+
     const filtroCapacitaciones =
-      rol === "Administrador" || rol === "Auditor"
-        ? {}
-        : { creado_por: id_usuario || -1 };
+      rol === "Administrador" || rol === "Auditor" || rol === "SOPORTE"
+        ? filtroSaaS
+        : { creado_por: id_usuario || -1, ...filtroSaaS };
 
+    // 🟢 MODIFICADO: Aplicamos filtro a todas las tablas base
     const [planes, trabajadores, capacitaciones] = await Promise.all([
-      prisma.planAnual.findMany(),
-      prisma.trabajadores.findMany({ where: { estado: true } }),
+      prisma.planAnual.findMany({ where: filtroSaaS }),
+      prisma.trabajadores.findMany({ where: { estado: true, ...filtroSaaS } }),
       prisma.capacitaciones.findMany({
-        where: filtroCapacitaciones, // Aplicamos el filtro seguro
+        where: filtroCapacitaciones,
         include: { participantes: { select: { dni: true } } },
       }),
     ]);
 
-    // 🟢 OPTIMIZACIÓN 1: Pre-normalizar trabajadores una sola vez
-    const trabajadoresNorm = trabajadores.map(t => ({
+    const trabajadoresNorm = trabajadores.map((t) => ({
       ...t,
       areaN: normalizar(t.area),
       catN: normalizar(t.categoria),
       cargoN: normalizar(t.cargo),
-      palabrasOperaciones: ["operaciones", "planta", "packing"].some(op => normalizar(t.area).includes(op))
+      palabrasOperaciones: ["operaciones", "planta", "packing"].some((op) =>
+        normalizar(t.area).includes(op),
+      ),
     }));
 
     const temasUnificados = {};
@@ -262,34 +266,32 @@ const obtenerAvance = async (req, res) => {
           mesesSet: new Set(),
           objetivosSet: new Set(),
           areasSet: new Set(),
-          areasNorm: [] // Para evitar normalizar en el loop de trabajadores
+          areasNorm: [],
         };
       }
       const entry = temasUnificados[temaNorm];
       if (plan.mes_programado) entry.mesesSet.add(plan.mes_programado);
-      const objLimpio = plan.objetivo ? plan.objetivo.replace("Original: ", "") : "";
+      const objLimpio = plan.objetivo
+        ? plan.objetivo.replace("Original: ", "")
+        : "";
       if (objLimpio) entry.objetivosSet.add(objLimpio);
 
       if (plan.areas_objetivo) {
         plan.areas_objetivo.split(",").forEach((a) => {
           const areaTrim = a.trim();
-          if (areaTrim) {
-            entry.areasSet.add(areaTrim);
-          }
+          if (areaTrim) entry.areasSet.add(areaTrim);
         });
       }
     });
 
-    // 🟢 OPTIMIZACIÓN 2: Pre-normalizar áreas de temas
-    Object.values(temasUnificados).forEach(entry => {
-      entry.areasNorm = Array.from(entry.areasSet).map(a => normalizar(a));
+    Object.values(temasUnificados).forEach((entry) => {
+      entry.areasNorm = Array.from(entry.areasSet).map((a) => normalizar(a));
     });
 
     const reporte = Object.values(temasUnificados).map((datosTema) => {
       const temaNorm = normalizar(datosTema.tema);
-
       const dnisAsistentes = new Set();
-      // Filtrar capacitaciones relevantes una vez
+
       capacitaciones.forEach((cap) => {
         const temaCap = normalizar(cap.tema_principal);
         if (temaCap.includes(temaNorm) || temaNorm.includes(temaCap)) {
@@ -302,18 +304,27 @@ const obtenerAvance = async (req, res) => {
       const areasListaNorm = datosTema.areasNorm;
       const palabrasOperaciones = ["operaciones", "planta", "packing"];
 
-      // 🟢 OPTIMIZACIÓN 3: Usar trabajadores pre-normalizados
       const trabajadoresObjetivo = trabajadoresNorm.filter((t) => {
         const esDeOperaciones = t.palabrasOperaciones;
 
         return areasListaNorm.some((areaPlan) => {
-          // Regla: CUARENTENA OPERACIONES
           if (esDeOperaciones) {
-            const planPideOperaciones = palabrasOperaciones.some((op) => areaPlan.includes(op));
+            const planPideOperaciones = palabrasOperaciones.some((op) =>
+              areaPlan.includes(op),
+            );
             if (!planPideOperaciones) return false;
           }
           if (areaPlan.includes("agricola")) {
-            const prohibidos = ["riego", "taller", "mecanico", "mecanizacion", "mantenimiento", "rrhh", "recursos humanos", "operaciones"];
+            const prohibidos = [
+              "riego",
+              "taller",
+              "mecanico",
+              "mecanizacion",
+              "mantenimiento",
+              "rrhh",
+              "recursos humanos",
+              "operaciones",
+            ];
             if (prohibidos.some((p) => t.areaN.includes(p))) return false;
           }
           if (areaPlan.includes("riego")) {
@@ -321,46 +332,110 @@ const obtenerAvance = async (req, res) => {
             if (prohibidos.some((p) => t.areaN.includes(p))) return false;
           }
 
-          // Diccionario
           const diccionario = {
-            rrhh: ["recursos humanos", "personal", "rrhh", "bienestar", "social"],
+            rrhh: [
+              "recursos humanos",
+              "personal",
+              "rrhh",
+              "bienestar",
+              "social",
+            ],
             sig: ["sig", "sistema de gestion", "integrado", "calidad", "sso"],
-            logistica: ["logistica", "almacen", "compras", "adquisiciones", "suministros"],
-            planificacion: ["planificacion", "planeamiento", "control", "proyectos"],
-            cifhs: ["cifhs", "hostigamiento", "comite de intervencion", "genero", "violencia"],
+            logistica: [
+              "logistica",
+              "almacen",
+              "compras",
+              "adquisiciones",
+              "suministros",
+            ],
+            planificacion: [
+              "planificacion",
+              "planeamiento",
+              "control",
+              "proyectos",
+            ],
+            cifhs: [
+              "cifhs",
+              "hostigamiento",
+              "comite de intervencion",
+              "genero",
+              "violencia",
+            ],
             eds: ["eds", "desempeño social", "equipo de desempeño"],
             scsst: ["scsst", "comite de seguridad", "csst"],
-            agricola: ["agricola", "campo", "cosecha", "cultivo", "fitosanidad"],
+            agricola: [
+              "agricola",
+              "campo",
+              "cosecha",
+              "cultivo",
+              "fitosanidad",
+            ],
             sanidad: ["sanidad", "evaluadores", "plagas"],
             riego: ["riego"],
             operaciones: ["operaciones", "planta", "packing"],
-            mantenimiento: ["mantenimiento", "taller", "mecanizacion", "maquinaria", "mecanico"],
-            mecanizacion: ["mecanizacion", "taller", "mantenimiento", "maquinaria"],
+            mantenimiento: [
+              "mantenimiento",
+              "taller",
+              "mecanizacion",
+              "maquinaria",
+              "mecanico",
+            ],
+            mecanizacion: [
+              "mecanizacion",
+              "taller",
+              "mantenimiento",
+              "maquinaria",
+            ],
           };
 
           if (diccionario[areaPlan]) {
             return diccionario[areaPlan].some(
-              (sinonimo) => t.areaN.includes(sinonimo) || t.catN.includes(sinonimo) || t.cargoN.includes(sinonimo)
+              (sinonimo) =>
+                t.areaN.includes(sinonimo) ||
+                t.catN.includes(sinonimo) ||
+                t.cargoN.includes(sinonimo),
             );
           }
 
           if (areaPlan.length > 3) {
-            const prohibidasGen = ["area", "areas", "departamento", "gerencia", "jefatura", "procesos", "tema"];
+            const prohibidasGen = [
+              "area",
+              "areas",
+              "departamento",
+              "gerencia",
+              "jefatura",
+              "procesos",
+              "tema",
+            ];
             if (prohibidasGen.includes(areaPlan)) return false;
-            return t.areaN.includes(areaPlan) || t.catN.includes(areaPlan) || t.cargoN.includes(areaPlan);
+            return (
+              t.areaN.includes(areaPlan) ||
+              t.catN.includes(areaPlan) ||
+              t.cargoN.includes(areaPlan)
+            );
           }
           return false;
         });
       });
 
       const metaTotal = trabajadoresObjetivo.length;
-      const asistentesValidos = trabajadoresObjetivo.filter((t) => dnisAsistentes.has(t.dni));
-      const faltantes = trabajadoresObjetivo.filter((t) => !dnisAsistentes.has(t.dni));
+      const asistentesValidos = trabajadoresObjetivo.filter((t) =>
+        dnisAsistentes.has(t.dni),
+      );
+      const faltantes = trabajadoresObjetivo.filter(
+        (t) => !dnisAsistentes.has(t.dni),
+      );
 
       let avanceReal = asistentesValidos.length;
-      if (metaTotal === 0 && dnisAsistentes.size > 0) avanceReal = dnisAsistentes.size;
+      if (metaTotal === 0 && dnisAsistentes.size > 0)
+        avanceReal = dnisAsistentes.size;
 
-      const porcentaje = metaTotal > 0 ? (avanceReal / metaTotal) * 100 : (avanceReal > 0 ? 100 : 0);
+      const porcentaje =
+        metaTotal > 0
+          ? (avanceReal / metaTotal) * 100
+          : avanceReal > 0
+            ? 100
+            : 0;
 
       return {
         id_plan: datosTema.id_referencia,
@@ -389,16 +464,22 @@ const obtenerAvance = async (req, res) => {
   }
 };
 
-// --- 3. OBTENER LISTA (También corregido para devolver categoria) ---
+// --- 3. OBTENER LISTA (Filtrado por Empresa) ---
 const obtenerListaTemas = async (req, res) => {
   try {
+    const rol = req.user?.rol;
+    const id_empresa = req.user?.id_empresa;
+
+    const filtroSaaS = rol === "SOPORTE" ? {} : { id_empresa };
+
     const planes = await prisma.planAnual.findMany({
+      where: filtroSaaS, // 🟢 MODIFICADO
       select: {
         tema: true,
         clasificacion: true,
         areas_objetivo: true,
         objetivo: true,
-        categoria: true, // 🟢 Aseguramos que esto se envíe
+        categoria: true,
       },
       distinct: ["tema"],
     });

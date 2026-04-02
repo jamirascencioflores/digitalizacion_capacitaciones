@@ -10,10 +10,17 @@ const {
   uploadFromBase64,
 } = require("../utils/uploadToFirebase");
 
-// 1. LISTAR TODOS
+// 1. LISTAR TODOS (Filtrado por Empresa)
 const obtenerTrabajadores = async (req, res) => {
   try {
+    const rol = req.user?.rol;
+    const id_empresa = req.user?.id_empresa;
+
+    // 🟢 NUEVO: SOPORTE ve todo, el resto ve solo su empresa
+    const filtro = rol === "SOPORTE" ? {} : { id_empresa };
+
     const trabajadores = await prisma.trabajadores.findMany({
+      where: filtro,
       orderBy: [{ apellidos: "asc" }, { nombres: "asc" }],
     });
     res.json(trabajadores);
@@ -25,8 +32,15 @@ const obtenerTrabajadores = async (req, res) => {
 
 const getTrabajadoresSelect = async (req, res) => {
   try {
+    const rol = req.user?.rol;
+    const id_empresa = req.user?.id_empresa;
+
+    // 🟢 NUEVO: Aplicamos el filtro también aquí
+    const filtro =
+      rol === "SOPORTE" ? { estado: true } : { estado: true, id_empresa };
+
     const trabajadores = await prisma.trabajadores.findMany({
-      where: { estado: true },
+      where: filtro,
       select: {
         dni: true,
         nombres: true,
@@ -60,11 +74,20 @@ const buscarPorDNI = async (req, res) => {
   }
 };
 
-// 🟢 3. GUARDAR (CREAR O ACTUALIZAR) - CON CLOUDINARY
+// 🟢 3. GUARDAR (CREAR O ACTUALIZAR)
 const guardarTrabajador = async (req, res) => {
   try {
-    const { dni, nombres, apellidos, area, cargo, genero, firma_url } =
-      req.body;
+    // Agregamos id_empresa por si SOPORTE lo manda en el formulario
+    const {
+      dni,
+      nombres,
+      apellidos,
+      area,
+      cargo,
+      genero,
+      firma_url,
+      id_empresa,
+    } = req.body;
 
     if (!nombres || !apellidos) {
       return res
@@ -72,19 +95,20 @@ const guardarTrabajador = async (req, res) => {
         .json({ error: "Se requieren nombres y apellidos por separado." });
     }
 
-    // Lógica de Imagen:
-    // Si viene un archivo (req.file), lo subimos y usamos esa URL.
-    // Si no viene archivo, usamos el firma_url que venga en el body (o null).
+    // 🟢 NUEVO: Determinar a qué empresa pertenece el nuevo trabajador
+    const empresaDestino =
+      req.user?.rol === "SOPORTE" && id_empresa
+        ? Number(id_empresa)
+        : req.user?.id_empresa || 1;
+
     let urlFinal = firma_url;
 
-    // 🖊️ FIRMA DIBUJADA (base64)
     if (firma_url && firma_url.startsWith("data:image")) {
       console.log("✍️ Subiendo firma dibujada...");
       const upload = await uploadFromBase64(firma_url, "firmas_trabajadores");
       urlFinal = upload.secure_url;
     }
 
-    // 📁 FIRMA COMO ARCHIVO
     if (req.file) {
       console.log("📤 Subiendo firma como archivo...");
       const upload = await uploadFromBuffer(
@@ -102,7 +126,7 @@ const guardarTrabajador = async (req, res) => {
         area,
         cargo,
         genero,
-        firma_url: urlFinal, // Usamos la URL (nueva o existente)
+        firma_url: urlFinal,
       },
       create: {
         dni,
@@ -112,6 +136,7 @@ const guardarTrabajador = async (req, res) => {
         cargo,
         genero,
         firma_url: urlFinal,
+        id_empresa: empresaDestino, // 🟢 NUEVO: Lo vinculamos a la empresa
       },
     });
 
@@ -138,8 +163,6 @@ const eliminarTrabajador = async (req, res) => {
 };
 
 // 5. CARGA MASIVA DE FIRMAS
-// NOTA: Esta función requiere un ajuste mayor si usas Cloudinary para muchas fotos.
-// Por ahora la dejamos funcional para memoria, pero subirá las fotos una por una.
 const cargaMasivaFirmas = async (req, res) => {
   try {
     const archivos = req.files; // Ahora son buffers en memoria
@@ -147,6 +170,16 @@ const cargaMasivaFirmas = async (req, res) => {
     if (!archivos || archivos.length === 0) {
       return res.status(400).json({ error: "No se enviaron archivos." });
     }
+
+    // 🟢 NUEVO: Determinar la empresa para la ruta de Firebase
+    const { id_empresa } = req.body;
+    const empresaDestino =
+      req.user?.rol === "SOPORTE" && id_empresa
+        ? Number(id_empresa)
+        : req.user?.id_empresa || 1;
+
+    // 🟢 NUEVO: Construir la ruta dinámica
+    const folderPath = `empresas/empresa_${empresaDestino}/firmas_trabajadores`;
 
     let actualizados = 0;
     let errores = 0;
@@ -157,16 +190,20 @@ const cargaMasivaFirmas = async (req, res) => {
         const dniExtraido = path.parse(nombreOriginal).name;
 
         if (/^\d{8}$/.test(dniExtraido)) {
-          // Subir a Firebase
+          // 🟢 Subir a Firebase en la ruta de la empresa
           const result = await uploadFromBuffer(
             archivo.buffer,
-            "firmas_trabajadores",
-            archivo.originalname
+            folderPath,
+            archivo.originalname,
           );
           const urlPublica = result.secure_url;
 
+          // Actualizamos asegurando que el trabajador sea de esa empresa
           const resultado = await prisma.trabajadores.updateMany({
-            where: { dni: dniExtraido },
+            where: {
+              dni: dniExtraido,
+              id_empresa: empresaDestino, // Candado de seguridad Multi-Tenant
+            },
             data: { firma_url: urlPublica },
           });
 
@@ -202,7 +239,13 @@ const importarExcelInteligente = async (req, res) => {
     if (!req.file)
       return res.status(400).json({ error: "Sube un archivo Excel (.xlsx)" });
 
-    // Leemos el buffer
+    // 🟢 NUEVO: Determinar empresa para todos los trabajadores del Excel
+    const id_empresa_body = req.body.id_empresa;
+    const empresaDestino =
+      req.user?.rol === "SOPORTE" && id_empresa_body
+        ? Number(id_empresa_body)
+        : req.user?.id_empresa || 1;
+
     const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
     const sheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
@@ -211,7 +254,6 @@ const importarExcelInteligente = async (req, res) => {
     if (rawData.length < 2)
       return res.status(400).json({ error: "El Excel está vacío" });
 
-    // FILA 0: CABECERAS
     const headers = rawData[0].map((h) =>
       String(h)
         .toLowerCase()
@@ -219,19 +261,14 @@ const importarExcelInteligente = async (req, res) => {
         .normalize("NFD")
         .replace(/[\u0300-\u036f]/g, ""),
     );
-
     const findCol = (keywords) =>
       headers.findIndex((h) => keywords.some((k) => h.includes(k)));
 
-    // --- DICCIONARIO DE COLUMNAS ---
     const idxDNI = findCol(["dni", "documento", "cedula", "codigogeneral"]);
     const idxNombres = findCol(["nombres", "nombre", "colaborador"]);
-
-    // 🔍 CAMBIO CLAVE: Buscamos 3 tipos de columnas de apellidos
-    const idxApellidosGeneral = findCol(["apellidos", "apellido"]); // Columna única "Apellidos"
-    const idxPaterno = findCol(["paterno"]); // Columna específica "Paterno"
-    const idxMaterno = findCol(["materno"]); // Columna específica "Materno"
-
+    const idxApellidosGeneral = findCol(["apellidos", "apellido"]);
+    const idxPaterno = findCol(["paterno"]);
+    const idxMaterno = findCol(["materno"]);
     const idxArea = findCol([
       "area",
       "unidad",
@@ -263,20 +300,14 @@ const importarExcelInteligente = async (req, res) => {
       let nombres = "SIN NOMBRE";
       let apellidos = "SIN APELLIDO";
 
-      // 1. OBTENER NOMBRES
       if (idxNombres !== -1) nombres = row[idxNombres] || nombres;
 
-      // 2. LOGICA INTELIGENTE DE APELLIDOS (AQUÍ ESTÁ EL ARREGLO) 🧠
       if (idxPaterno !== -1 && idxMaterno !== -1) {
-        // CASO A: Existen columnas separadas (Paterno y Materno) -> LAS UNIMOS
         const p = String(row[idxPaterno] || "").trim();
         const m = String(row[idxMaterno] || "").trim();
         apellidos = `${p} ${m}`.trim();
       } else if (idxApellidosGeneral !== -1) {
-        // CASO B: Existe una sola columna "Apellidos" -> USAMOS ESA
         apellidos = String(row[idxApellidosGeneral] || "").trim();
-
-        // Si por casualidad la columna "Nombres" incluye los apellidos (formato: APELLIDOS, NOMBRES)
         if (apellidos === "" && idxNombres !== -1) {
           const completo = String(row[idxNombres]).trim();
           if (completo.includes(",")) {
@@ -285,11 +316,9 @@ const importarExcelInteligente = async (req, res) => {
           }
         }
       } else if (idxPaterno !== -1) {
-        // CASO C: Solo existe Paterno
         apellidos = String(row[idxPaterno] || "").trim();
       }
 
-      // Evitamos guardar "SIN APELLIDO" si logramos conseguir algo
       if (!apellidos) apellidos = "SIN APELLIDO";
 
       const area =
@@ -320,6 +349,7 @@ const importarExcelInteligente = async (req, res) => {
             genero,
             categoria,
             estado: true,
+            id_empresa: empresaDestino, // 🟢 NUEVO: Inyectamos la empresa aquí
           },
         });
         procesados++;
@@ -358,7 +388,11 @@ const actualizarTrabajador = async (req, res) => {
     // Si viene nueva imagen, la subimos
     if (req.file) {
       console.log("📤 Actualizando firma en Firebase...");
-      const result = await uploadFromBuffer(req.file.buffer, "firmas_trabajadores", req.file.originalname);
+      const result = await uploadFromBuffer(
+        req.file.buffer,
+        "firmas_trabajadores",
+        req.file.originalname,
+      );
       datos.firma_url = result.secure_url;
     }
 

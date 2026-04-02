@@ -11,45 +11,62 @@ const login = async (req, res) => {
   logger.info(`Intento de login para usuario: ${usuario}`);
 
   try {
-    // Buscar usuario
     const userEncontrado = await prisma.usuarios.findUnique({
       where: { usuario: usuario },
     });
 
-    if (!userEncontrado || !(await bcrypt.compare(contrasena, userEncontrado.contrasena))) {
+    if (
+      !userEncontrado ||
+      !(await bcrypt.compare(contrasena, userEncontrado.contrasena))
+    ) {
       logger.warn(`Credenciales inválidas para: ${usuario}`);
       return res.status(401).json({ error: "Credenciales inválidas" });
     }
 
-    // Generar Token JWT
+    // 🟢 NUEVO: Validar si la empresa está suspendida (SaaS)
+    if (userEncontrado.id_empresa) {
+      const empresa = await prisma.empresa.findUnique({
+        where: { id_empresa: userEncontrado.id_empresa },
+      });
+
+      if (empresa && !empresa.estado) {
+        logger.warn(
+          `Intento de acceso bloqueado: Empresa suspendida para ${usuario}`,
+        );
+        return res.status(403).json({
+          error: "Su empresa se encuentra suspendida. Contacte a soporte.",
+        });
+      }
+    }
+
+    // 🟢 MODIFICADO: Agregamos id_empresa al token
     const token = jwt.sign(
       {
         id: userEncontrado.id_usuario,
         rol: userEncontrado.rol,
+        id_empresa: userEncontrado.id_empresa, // <-- NUEVO
       },
       process.env.JWT_SECRET,
       { expiresIn: "8h" },
     );
 
-    // Configuración de la cookie: HttpOnly y Secure
-    res.cookie('token', token, {
+    res.cookie("token", token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'Lax', // O 'None' si hay dominios distintos
-      maxAge: 8 * 60 * 60 * 1000, // 8 horas
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "Lax",
+      maxAge: 8 * 60 * 60 * 1000,
     });
 
-    // Quitamos la contraseña de la respuesta
     const { contrasena: _, ...datosUsuario } = userEncontrado;
 
     logger.info(`Login exitoso: ${usuario} (${userEncontrado.rol})`);
 
     res.json({
       mensaje: "Bienvenido al Sistema 👋",
-      token: token, // Enviamos el token igual para retrocompatibilidad por ahora
+      token: token,
       usuario: {
         ...datosUsuario,
-        solicita_reset: userEncontrado.solicita_reset
+        solicita_reset: userEncontrado.solicita_reset,
       },
     });
   } catch (error) {
@@ -58,29 +75,36 @@ const login = async (req, res) => {
   }
 };
 
-
-// --- 2. OBTENER USUARIOS (Nuevo: Para el Panel Admin) ---
+// 🟢 OBTENER USUARIOS CON AISLAMIENTO MULTITENANT
 const obtenerUsuarios = async (req, res) => {
   try {
+    // 🟢 Agregamos los signos de interrogación (?) para evitar crasheos si falta el dato
+    const isSoporte = req.user?.rol?.toUpperCase() === "SOPORTE";
+
+    // Condición de búsqueda
+    let whereClause = {};
+
+    if (!isSoporte) {
+      whereClause = {
+        id_empresa: req.user?.id_empresa, // Usamos ? aquí también por seguridad
+        rol: { not: "Soporte" },
+      };
+    }
+
     const usuarios = await prisma.usuarios.findMany({
+      where: whereClause,
       select: {
         id_usuario: true,
-        nombre: true, // O 'nombre_completo' según tu schema.prisma
+        nombre: true,
         usuario: true,
         email: true,
         rol: true,
         estado: true,
+        id_empresa: true,
       },
-      orderBy: { id_usuario: "asc" },
     });
 
-    // Mapeamos para que el frontend reciba "nombre_completo" si en la BD se llama "nombre"
-    const usuariosFormateados = usuarios.map((u) => ({
-      ...u,
-      nombre_completo: u.nombre || u.nombre_completo,
-    }));
-
-    res.json(usuariosFormateados);
+    res.json(usuarios);
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Error al obtener usuarios" });
@@ -93,25 +117,37 @@ const crypto = require("crypto");
 
 const registrarUsuario = async (req, res) => {
   try {
-    const { nombre_completo, nombre, usuario, password, contrasena, rol, email } =
-      req.body;
+    // Agregamos id_empresa por si SOPORTE lo envía en el body
+    const {
+      nombre_completo,
+      nombre,
+      usuario,
+      password,
+      contrasena,
+      rol,
+      email,
+      id_empresa,
+    } = req.body;
 
     const nombreFinal = nombre_completo || nombre;
     let passOriginal = password || contrasena;
 
-    // Si no mandan contraseña, generamos una temporal
     const esTemporal = !passOriginal;
     if (esTemporal) {
-      passOriginal = crypto.randomBytes(4).toString("hex"); // 8 caracteres aleatorios
+      passOriginal = crypto.randomBytes(4).toString("hex");
     }
 
     if (!nombreFinal || !usuario || !rol || !email) {
-      return res.status(400).json({ error: "Faltan campos obligatorios (nombre, usuario, rol, email)" });
+      return res.status(400).json({
+        error: "Faltan campos obligatorios (nombre, usuario, rol, email)",
+      });
     }
 
     const existe = await prisma.usuarios.findUnique({ where: { usuario } });
     if (existe) {
-      return res.status(400).json({ error: "El nombre de usuario ya está en uso" });
+      return res
+        .status(400)
+        .json({ error: "El nombre de usuario ya está en uso" });
     }
 
     const existeEmail = await prisma.usuarios.findFirst({ where: { email } });
@@ -122,6 +158,13 @@ const registrarUsuario = async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashContrasena = await bcrypt.hash(passOriginal, salt);
 
+    // 🟢 NUEVO: Decidir a qué empresa va el usuario
+    const usuarioActual = req.user || {};
+    const empresaDestino =
+      usuarioActual.rol === "SOPORTE"
+        ? id_empresa || null // SOPORTE puede crear admins para empresas específicas
+        : usuarioActual.id_empresa; // Un Admin solo crea dentro de su empresa
+
     const nuevoUsuario = await prisma.usuarios.create({
       data: {
         nombre: nombreFinal,
@@ -130,11 +173,11 @@ const registrarUsuario = async (req, res) => {
         contrasena: hashContrasena,
         rol,
         estado: true,
-        solicita_reset: true, // Forzamos cambio de clave al entrar
+        solicita_reset: true,
+        id_empresa: empresaDestino, // <-- Se guarda la relación
       },
     });
 
-    // Enviar correo de bienvenida
     const loginUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/login`;
     const html = `
       <h1>Bienvenido a FormApp, ${nombreFinal}</h1>
@@ -145,7 +188,11 @@ const registrarUsuario = async (req, res) => {
       <a href="${loginUrl}" style="background-color: #16a34a; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Iniciar Sesión</a>
     `;
 
-    await sendEmailManual(email, "Bienvenido a FormApp - Tus credenciales", html);
+    await sendEmailManual(
+      email,
+      "Bienvenido a FormApp - Tus credenciales",
+      html,
+    );
 
     const { contrasena: _, ...usuarioSinPass } = nuevoUsuario;
 
@@ -236,10 +283,29 @@ const actualizarUsuario = async (req, res) => {
   }
 };
 
-// --- 5. ELIMINAR USUARIO (Con protección de Integridad) ---
+// --- 5. ELIMINAR USUARIO (Con protección de Integridad y Aislamiento SaaS) ---
 const eliminarUsuario = async (req, res) => {
   try {
     const { id } = req.params;
+
+    // 🟢 SEGURIDAD 1: No eliminarse a sí mismo
+    if (Number(id) === req.user.id_usuario) {
+      return res
+        .status(400)
+        .json({ error: "No puedes eliminar tu propia cuenta." });
+    }
+
+    // 🟢 SEGURIDAD 2: Aislamiento Multitenant
+    if (String(req.user.rol).toUpperCase() !== "SOPORTE") {
+      const targetUser = await prisma.usuarios.findUnique({
+        where: { id_usuario: Number(id) },
+      });
+      if (!targetUser || targetUser.id_empresa !== req.user.id_empresa) {
+        return res.status(403).json({
+          error: "Acceso denegado: El usuario pertenece a otra empresa.",
+        });
+      }
+    }
 
     await prisma.usuarios.delete({
       where: { id_usuario: parseInt(id) },
@@ -263,13 +329,22 @@ const eliminarUsuario = async (req, res) => {
   }
 };
 
+// --- OBTENER SOLICITUDES RESET (Con Aislamiento SaaS) ---
 const obtenerSolicitudesReset = async (req, res) => {
   try {
+    // 🟢 SEGURIDAD: Cada admin solo ve las alertas de SU empresa
+    const isSoporte = String(req.user.rol).toUpperCase() === "SOPORTE";
+    const whereClause = { solicita_reset: true };
+
+    if (!isSoporte) {
+      whereClause.id_empresa = req.user.id_empresa;
+    }
+
     const usuarios = await prisma.usuarios.findMany({
-      where: { solicita_reset: true },
+      where: whereClause,
       select: {
         id_usuario: true,
-        usuario: true, // Este es el DNI
+        usuario: true, // Este es el DNI o Username
         nombre: true,
         rol: true,
         fecha_creacion: true, // Opcional si tienes fecha
@@ -282,10 +357,10 @@ const obtenerSolicitudesReset = async (req, res) => {
   }
 };
 
+// --- RESETEAR CONTRASEÑA (Con Aislamiento SaaS) ---
 const resetearContrasena = async (req, res) => {
   try {
     const { id } = req.params;
-    // 1. Recibimos la nueva contraseña del cuerpo de la petición
     const { nuevaContrasena } = req.body;
 
     // Buscamos al usuario
@@ -295,8 +370,17 @@ const resetearContrasena = async (req, res) => {
 
     if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
 
-    // 2. DECISIÓN: ¿Usamos la que escribió el admin o el DNI?
-    // Si nuevaContrasena tiene texto, lo usamos. Si no, usamos el DNI (user.usuario).
+    // 🟢 SEGURIDAD: Evitar que un admin le resetee la clave a alguien de otra empresa
+    if (
+      String(req.user.rol).toUpperCase() !== "SOPORTE" &&
+      user.id_empresa !== req.user.id_empresa
+    ) {
+      return res.status(403).json({
+        error: "Acceso denegado: El usuario pertenece a otra empresa.",
+      });
+    }
+
+    // DECISIÓN: ¿Usamos la que escribió el admin o el Username/DNI?
     const passFinal =
       nuevaContrasena && nuevaContrasena.trim() !== ""
         ? nuevaContrasena
@@ -315,9 +399,7 @@ const resetearContrasena = async (req, res) => {
       },
     });
 
-    res.json({
-      message: `Contraseña actualizada correctamente.`,
-    });
+    res.json({ message: `Contraseña actualizada correctamente.` });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Error al resetear contraseña" });

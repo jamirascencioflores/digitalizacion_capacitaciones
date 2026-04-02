@@ -1,8 +1,9 @@
 // frontend/types/index.ts
 
 export interface Usuario {
-  id?: number; // Aliado para id_usuario si se usa indistintamente
+  id?: number;
   id_usuario: number;
+  id_empresa?: number; // 🟢 NUEVO: Soporte para Multitenancy
   nombre: string;
   usuario: string;
   rol: string;
@@ -13,7 +14,7 @@ export interface Usuario {
 }
 
 export interface Participante {
-  id_participante?: number; // Opcional porque al crear no tiene ID aún
+  id_participante?: number;
   numero: number;
   dni: string;
   apellidos_nombres: string;
@@ -23,6 +24,7 @@ export interface Participante {
 
 export interface Capacitacion {
   id_capacitacion?: number;
+  id_empresa?: number; // 🟢 NUEVO: Para saber de quién es (útil en SOPORTE)
   codigo_acta: string;
   tema: string;
   temario?: string;
@@ -31,8 +33,8 @@ export interface Capacitacion {
   modalidad: string;
   escuela: string;
   categoria: string;
-  fecha: string; // Viene como string del input date
-  hora_inicio: string; // Viene como string del input time
+  fecha: string;
+  hora_inicio: string;
   hora_fin: string;
   tiempo_estimado: string;
   sede: string;
@@ -46,5 +48,5 @@ export interface Capacitacion {
   expositor_nombre: string;
   expositor_dni: string;
   insitucion_procedencia: string;
-  participantes?: Participante[]; // Array de participantes
+  participantes?: Participante[];
 }

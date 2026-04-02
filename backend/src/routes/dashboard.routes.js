@@ -2,28 +2,43 @@
 const { Router } = require("express");
 const router = Router();
 
-// 1. Importamos el middleware con llaves (CORRECTO)
+// 1. Importamos el middleware
 const { verificarToken } = require("../middlewares/auth.middleware");
 
-// 2. Importamos el controlador
-const controller = require("../controllers/dashboard.controller");
+// 2. Importamos y desestructuramos el controlador
+// Esto evita el error "is not defined" al usar las funciones directamente
+const {
+  getStats,
+  getRecent,
+  getDistribution,
+  getEmpresasSaaS,
+  getEmpresaById,
+  getUsuariosByEmpresa,
+  toggleEstadoEmpresa,
+} = require("../controllers/dashboard.controller");
 
-// --- DEBUG ---
-console.log("--- DEBUG DASHBOARD ---");
+// --- DEBUG (Opcional, puedes borrarlo después de probar) ---
+console.log("--- DEBUG DASHBOARD ROUTES ---");
 console.log(
-  "AuthMiddleware es función?:",
-  typeof verificarToken === "function" ? "SI" : "NO (ERROR)",
+  "VerificarToken disponible:",
+  typeof verificarToken === "function" ? "✅" : "❌ ERROR",
 );
+console.log(
+  "getEmpresasSaaS disponible:",
+  typeof getEmpresasSaaS === "function" ? "✅" : "❌ ERROR",
+);
+console.log("------------------------------");
 
-// Verificamos que las funciones del controlador existan
-// (Asegúrate de que en dashboard.controller.js se llamen getStats, getRecent, etc.)
-console.log("getStats:", controller.getStats ? "OK" : "FALTA");
-console.log("getRecent:", controller.getRecent ? "OK" : "FALTA");
-console.log("-----------------------");
+// 3. Definir rutas
+// Rutas generales de métricas (Filtradas por empresa en el controlador)
+router.get("/stats", verificarToken, getStats);
+router.get("/recent", verificarToken, getRecent);
+router.get("/distribution", verificarToken, getDistribution);
 
-// 3. Definir rutas usando 'verificarToken'
-router.get("/stats", verificarToken, controller.getStats);
-router.get("/recent", verificarToken, controller.getRecent);
-router.get("/distribution", verificarToken, controller.getDistribution);
+// Rutas administrativas SaaS (Exclusivas para rol SOPORTE)
+router.get("/saas/empresas", verificarToken, getEmpresasSaaS);
+router.get("/saas/empresas/:id", verificarToken, getEmpresaById);
+router.get("/saas/empresas/:id/usuarios", verificarToken, getUsuariosByEmpresa);
+router.patch("/saas/empresas/:id/toggle", verificarToken, toggleEstadoEmpresa);
 
 module.exports = router;

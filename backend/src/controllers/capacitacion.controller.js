@@ -3,6 +3,7 @@ const CapacitacionService = require("../services/capacitacion.service");
 const FileService = require("../services/file.service");
 const ExcelService = require("../services/excel.service");
 const { procesarHora, normalizar } = require("../utils/formatters");
+const { uploadFromBuffer } = require("../utils/uploadToFirebase");
 
 /**
  * CONTROLADOR DE CAPACITACIONES
@@ -12,49 +13,161 @@ const { procesarHora, normalizar } = require("../utils/formatters");
 const crearCapacitacion = async (req, res) => {
   try {
     const { participantes, institucion_procedencia, ...resto } = req.body;
-    const usuarioId = req.user?.id;
+    const usuarioId = req.user?.id || req.user?.id_usuario;
+    const idEmpresa = req.user?.id_empresa || 1;
+
     if (!usuarioId) return res.status(401).json({ error: "No autenticado" });
 
-    const folder = `sistema_capacitaciones/temp_${Date.now()}`;
-
-    // 1. Procesar archivos
-    const fotosEvidencia = await FileService.uploadMultiple(req.files["evidencias"], `${folder}/evidencias`);
-    const urlFirmaExpositor = await FileService.uploadSingle(req.files["expositor_firma"]?.[0], `${folder}/firma_expositor`);
-
-    // 2. Formatear datos para el servicio
+    // 🟢 PASO 1: GUARDAR EN LA BASE DE DATOS PRIMERO (Solo texto)
+    // Dejamos los documentos vacíos y la firma temporalmente en blanco
     const payload = {
       ...resto,
       institucion_procedencia: institucion_procedencia || null,
-      expositor_firma: urlFirmaExpositor || resto.expositor_firma || "",
+      expositor_firma: resto.expositor_firma || "",
       fecha: resto.fecha ? new Date(resto.fecha) : undefined,
       hora_inicio: procesarHora(resto.hora_inicio),
       hora_termino: procesarHora(resto.hora_termino),
       total_hombres: Number(resto.total_hombres) || 0,
       total_mujeres: Number(resto.total_mujeres) || 0,
       total_trabajadores: Number(resto.total_trabajadores) || 0,
-      documentos: fotosEvidencia,
-      participantes: typeof participantes === "string" ? JSON.parse(participantes) : participantes || [],
+      documentos: [], // Vacío por ahora
+      participantes:
+        typeof participantes === "string"
+          ? JSON.parse(participantes)
+          : participantes || [],
     };
 
-    const nueva = await CapacitacionService.create(payload, usuarioId);
+    // ¡Aquí nace la capacitación! Si falla (ej. Acta duplicada), salta al Catch y no sube nada.
+    const nueva = await CapacitacionService.create(
+      payload,
+      usuarioId,
+      idEmpresa,
+    );
+
+    // 🟢 PASO 2: CAPTURAR ARCHIVOS YA SUBIDOS POR MULTER
+    // Como Multer ya los subió, req.files ya tiene la información
+    let urlFirma = null;
+    let fotosEvidencia = [];
+
+    // 2.1 Subir Firma desde la RAM (Ahora en la ruta de la capacitación)
+    if (req.files && req.files["expositor_firma"]) {
+      const firmaFile = req.files["expositor_firma"][0];
+
+      // 🟢 Ruta corregida: Ahora cuelga de la carpeta de la capacitación específica
+      const folderFirmas = `empresas/empresa_${idEmpresa}/capacitaciones/cap_${nueva.id_capacitacion}/firma_expositor`;
+
+      const resultadoFirma = await uploadFromBuffer(
+        firmaFile.buffer,
+        folderFirmas,
+        firmaFile.originalname,
+      );
+      urlFirma = resultadoFirma.secure_url;
+    }
+
+    // 2.2 Subir Evidencias desde la RAM
+    if (req.files && req.files["evidencias"]) {
+      const folderCapacitacion = `empresas/empresa_${idEmpresa}/capacitaciones/cap_${nueva.id_capacitacion}/evidencias`;
+
+      // Como pueden ser varias fotos, iteramos y subimos una por una
+      for (const file of req.files["evidencias"]) {
+        const resultadoFoto = await uploadFromBuffer(
+          file.buffer, // 🟢 Archivo de la RAM
+          folderCapacitacion,
+          file.originalname,
+        );
+        fotosEvidencia.push({ secure_url: resultadoFoto.secure_url });
+      }
+    }
+
+    // 2.3 Subir firmas de participantes desde la RAM
+    if (req.files && req.files["firmas_participantes"]) {
+      // Usamos el ID de la capacitación que acaba de nacer
+      const folderFirmasPart = `empresas/empresa_${idEmpresa}/capacitaciones/cap_${nueva.id_capacitacion}/firmas_participantes`;
+      const actualizaciones = [];
+
+      for (const file of req.files["firmas_participantes"]) {
+        // 🟢 file.originalname viene como "0_firma_trab_123.webp".
+        // Extraemos el índice (0) y el nombre real de la firma
+        const partes = file.originalname.split("_");
+        const indexFront = parseInt(partes[0], 10);
+        const nombreReal = file.originalname.substring(partes[0].length + 1);
+
+        // Subimos a Firebase
+        const resFirma = await uploadFromBuffer(
+          file.buffer,
+          folderFirmasPart,
+          nombreReal,
+        );
+
+        // Obtenemos el DNI del trabajador desde el payload usando el índice
+        const dniParticipante = payload.participantes[indexFront].dni;
+
+        // Actualizamos ESPECÍFICAMENTE a este participante en la base de datos
+        actualizaciones.push(
+          prisma.participantes.updateMany({
+            where: {
+              id_capacitacion: nueva.id_capacitacion,
+              dni: dniParticipante,
+            },
+            data: { firma_url: resFirma.secure_url },
+          }),
+        );
+      }
+
+      // Ejecutamos todos los updates a la vez
+      await Promise.all(actualizaciones);
+    }
+
+    // 🟢 PASO 3: ACTUALIZAR LA BD CON LAS URLs
+    if (urlFirma || fotosEvidencia.length > 0) {
+      if (urlFirma) {
+        await prisma.capacitaciones.update({
+          where: { id_capacitacion: nueva.id_capacitacion },
+          data: { expositor_firma: urlFirma },
+        });
+        nueva.expositor_firma = urlFirma;
+      }
+
+      if (fotosEvidencia.length > 0) {
+        const documentosData = fotosEvidencia.map((evidencia) => ({
+          id_capacitacion: nueva.id_capacitacion,
+          url: evidencia.secure_url, // 🟢 Usamos directamente lo que nos devolvió Firebase
+          tipo: "EVIDENCIA_FOTO",
+        }));
+
+        await prisma.documentos.createMany({
+          data: documentosData,
+        });
+
+        nueva.documentos = documentosData;
+      }
+    }
+
+    // 🟢 PASO 4: CREAR NOTIFICACIÓN AL DASHBOARD
     try {
       await prisma.notificacion.create({
         data: {
+          id_empresa: idEmpresa,
           mensaje: `Se ha registrado una nueva capacitación: "${nueva.tema_principal || "Tema no especificado"}"`,
           tipo: "CAPACITACION",
-          url_destino: `/dashboard/capacitaciones/${nueva.id_capacitacion}`, // 🟢 Cambiado a nueva.id
+          url_destino: `/dashboard/capacitaciones/${nueva.id_capacitacion}`,
         },
       });
     } catch (errorNotificacion) {
       console.error("Error al generar la notificación:", errorNotificacion);
     }
+
     res.status(201).json({ mensaje: "Registrado con éxito", data: nueva });
   } catch (error) {
-    FileService.clearLocalFiles(req.files);
     console.error("🔥 Error en crearCapacitacion:", error);
+
+    // Si Prisma da error de validación (Ej: Código duplicado)
     if (error.code === "P2002") {
-      return res.status(400).json({ error: "El código de acta ya está registrado" });
+      return res
+        .status(400)
+        .json({ error: "El código de acta ya está registrado" });
     }
+
     res.status(500).json({ error: "Error al guardar", detalle: error.message });
   }
 };
@@ -63,7 +176,13 @@ const obtenerCapacitaciones = async (req, res) => {
   try {
     const id_auth = req.user?.id_usuario || req.user?.id || -1;
     const rol_auth = req.user?.rol;
-    const data = await CapacitacionService.getAll(id_auth, rol_auth);
+    const id_empresa = req.user?.id_empresa;
+
+    const data = await CapacitacionService.getAll(
+      id_auth,
+      rol_auth,
+      id_empresa,
+    );
     res.json(data);
   } catch (error) {
     res.status(500).json({ error: "Error al listar las capacitaciones" });
@@ -73,23 +192,69 @@ const obtenerCapacitaciones = async (req, res) => {
 const obtenerCapacitacion = async (req, res) => {
   try {
     const { id } = req.params;
+
+    // 🟢 ESCUDO: Si envían undefined o letras, lo rebotamos con un 400
+    if (!id || id === "undefined" || isNaN(Number(id))) {
+      return res.status(400).json({ error: "ID de capacitación inválido" });
+    }
+
+    // 1. Obtenemos los datos desde tu servicio
     const data = await CapacitacionService.getById(id);
+
     if (!data) return res.status(404).json({ error: "No encontrado" });
+
+    // 2. 🛡️ SEGURIDAD SAAS
+    const isSoporte = String(req.user?.rol).toUpperCase() === "SOPORTE";
+    if (!isSoporte && data.id_empresa !== req.user?.id_empresa) {
+      return res.status(403).json({
+        error: "Acceso denegado: Esta capacitación pertenece a otra empresa",
+      });
+    }
+
     res.json(data);
   } catch (error) {
-    res.status(500).json({ error: "Error al obtener el detalle" });
+    console.error("Error en obtenerCapacitacion:", error);
+    res
+      .status(500)
+      .json({ error: "Error al obtener el detalle de la capacitación" });
   }
 };
 
 const actualizarCapacitacion = async (req, res) => {
   const { id } = req.params;
+  const idNum = parseInt(id, 10); // Lo necesitamos como número para Prisma
+
   try {
     const { participantes, institucion_procedencia, ...resto } = req.body;
-    const folder = `sistema_capacitaciones/cap_${id}`;
+    const idEmpresa = req.user?.id_empresa || 1;
 
-    // 1. Procesar nuevos archivos
-    const nuevasFotos = await FileService.uploadMultiple(req.files?.["evidencias"], `${folder}/evidencias`);
-    const nuevaFirma = await FileService.uploadSingle(req.files?.["expositor_firma"]?.[0], `${folder}/firma_expositor`);
+    let nuevasFotos = [];
+    let nuevaFirma = null;
+
+    // 1.1 Subir nuevas Evidencias
+    if (req.files && req.files["evidencias"]) {
+      const folderEvidencias = `empresas/empresa_${idEmpresa}/capacitaciones/cap_${id}/evidencias`;
+      for (const file of req.files["evidencias"]) {
+        const resultado = await uploadFromBuffer(
+          file.buffer,
+          folderEvidencias,
+          file.originalname,
+        );
+        nuevasFotos.push({ url: resultado.secure_url, tipo: "EVIDENCIA_FOTO" });
+      }
+    }
+
+    // 1.2 Subir nueva Firma del Expositor
+    if (req.files && req.files["expositor_firma"]) {
+      const firmaFile = req.files["expositor_firma"][0];
+      const folderFirma = `empresas/empresa_${idEmpresa}/capacitaciones/cap_${id}/firma_expositor`;
+      const resultadoFirma = await uploadFromBuffer(
+        firmaFile.buffer,
+        folderFirma,
+        firmaFile.originalname,
+      );
+      nuevaFirma = resultadoFirma.secure_url;
+    }
 
     // 2. Preparar payload
     const payload = {
@@ -103,19 +268,71 @@ const actualizarCapacitacion = async (req, res) => {
       total_mujeres: Number(resto.total_mujeres) || 0,
       total_trabajadores: Number(resto.total_trabajadores) || 0,
       nuevosDocumentos: nuevasFotos,
-      participantes: typeof participantes === "string" ? JSON.parse(participantes) : participantes || [],
+      participantes:
+        typeof participantes === "string"
+          ? JSON.parse(participantes)
+          : participantes || [],
     };
 
-    // Limpieza de campos internos de Prisma/Calculados
-    const camposABorrar = ['id_capacitacion', 'creado_por', 'fecha_registro', 'documentos', 'faltantes', 'cobertura'];
-    camposABorrar.forEach(key => delete payload[key]);
+    // 3. Limpieza
+    const camposABorrar = [
+      "id_capacitacion",
+      "creado_por",
+      "fecha_registro",
+      "documentos",
+      "faltantes",
+      "cobertura",
+      "id_empresa",
+      "idEmpresa",
+    ];
+    camposABorrar.forEach((key) => delete payload[key]);
 
+    // 🟢 4. Ejecutar actualización de datos (Acta y Participantes)
+    // Esto asegura que la base de datos esté lista antes de poner las firmas.
     const actualizada = await CapacitacionService.update(id, payload);
-    res.json({ mensaje: "Capacitación actualizada correctamente", data: actualizada });
+
+    // 🟢 5. Subir firmas manuales de participantes a Firebase y actualizar BD
+    if (req.files && req.files["firmas_participantes"]) {
+      const folderFirmasPart = `empresas/empresa_${idEmpresa}/capacitaciones/cap_${id}/firmas_participantes`;
+      const actualizaciones = [];
+
+      for (const file of req.files["firmas_participantes"]) {
+        const partes = file.originalname.split("_");
+        const indexFront = parseInt(partes[0], 10);
+        const nombreReal = file.originalname.substring(partes[0].length + 1);
+
+        const resFirma = await uploadFromBuffer(
+          file.buffer,
+          folderFirmasPart,
+          nombreReal,
+        );
+        const dniParticipante = payload.participantes[indexFront].dni;
+
+        actualizaciones.push(
+          prisma.participantes.updateMany({
+            where: {
+              id_capacitacion: idNum, // 🟢 Usamos el ID de la URL como número
+              dni: dniParticipante,
+            },
+            data: { firma_url: resFirma.secure_url },
+          }),
+        );
+      }
+      await Promise.all(actualizaciones);
+    }
+
+    res.json({
+      mensaje: "Capacitación actualizada correctamente",
+      data: actualizada,
+    });
   } catch (error) {
-    FileService.clearLocalFiles(req.files);
     console.error("🔥 Error en actualizarCapacitacion:", error);
-    res.status(500).json({ error: "Error interno al procesar la actualización" });
+    res
+      .status(500)
+      .json({
+        error: "Error interno al procesar la actualización",
+        detalle: error.message,
+      });
   }
 };
 
@@ -130,18 +347,31 @@ const eliminarCapacitacion = async (req, res) => {
 
 const exportarExcel = async (req, res) => {
   try {
-    const empresa = await prisma.empresa.findFirst();
+    const id_empresa = req.user?.id_empresa || 1; // 🟢 NUEVO: Empresa del usuario
+
+    const empresa = await prisma.empresa.findUnique({ where: { id_empresa } });
     const capacitaciones = await prisma.capacitaciones.findMany({
+      where: req.user?.rol === "SOPORTE" ? {} : { id_empresa },
       include: { participantes: true },
       orderBy: { fecha: "desc" },
     });
 
-    if (capacitaciones.length === 0) return res.status(404).json({ error: "No hay datos" });
+    if (capacitaciones.length === 0)
+      return res.status(404).json({ error: "No hay datos" });
 
-    const workbook = await ExcelService.generateTrainingReport(capacitaciones, empresa);
+    const workbook = await ExcelService.generateTrainingReport(
+      capacitaciones,
+      empresa,
+    );
 
-    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-    res.setHeader("Content-Disposition", "attachment; filename=Reporte_Actas.xlsx");
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=Reporte_Actas.xlsx",
+    );
     await workbook.xlsx.write(res);
     res.end();
   } catch (error) {
@@ -183,13 +413,18 @@ const obtenerDetalleCumplimiento = async (req, res) => {
 
     const planes = await prisma.planAnual.findMany();
     const temaCap = normalizar(capacitacion.tema_principal);
-    const coincidencias = planes.filter(p => normalizar(p.tema).includes(temaCap));
+    const coincidencias = planes.filter((p) =>
+      normalizar(p.tema).includes(temaCap),
+    );
 
     // Cálculos reducidos para el ejemplo
     res.json({
-      capacitacion: { tema: capacitacion.tema_principal, fecha: capacitacion.fecha },
+      capacitacion: {
+        tema: capacitacion.tema_principal,
+        fecha: capacitacion.fecha,
+      },
       coincidencias_plan: coincidencias.length,
-      asistentes: capacitacion.participantes.length
+      asistentes: capacitacion.participantes.length,
     });
   } catch (error) {
     res.status(500).json({ error: "Error calculando cumplimiento" });

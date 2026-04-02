@@ -4,7 +4,7 @@ import { useState, Suspense, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { useRouter, useSearchParams } from 'next/navigation';
 import api from '@/services/api';
-import { Eye, EyeOff, Lock, CheckCircle2, AlertCircle, Loader2, ArrowLeft, User, Mail } from 'lucide-react';
+import { Eye, EyeOff, Lock, CheckCircle2, AlertCircle, Loader2, ArrowLeft, User, Mail, AtSign } from 'lucide-react';
 import AnimatedLoginBackground from '@/components/ui/AnimatedLoginBackground';
 
 function ResetPasswordForm() {
@@ -18,6 +18,8 @@ function ResetPasswordForm() {
     const [errorMsg, setErrorMsg] = useState('');
     const [currentStep, setCurrentStep] = useState(1);
     const [nombre, setNombre] = useState('');
+    // 🟢 NUEVO: Estado para el nombre de usuario
+    const [usuario, setUsuario] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [invitedEmail, setInvitedEmail] = useState('');
@@ -52,6 +54,13 @@ function ResetPasswordForm() {
         verify();
     }, [token, inviteToken, setValue]);
 
+    // 🟢 NUEVO: Manejo correcto de la redirección al terminar la cuenta regresiva
+    useEffect(() => {
+        if (status === 'success' && countdown === 0) {
+            router.push('/login');
+        }
+    }, [countdown, status, router]);
+
     const onSubmit = async (data: any) => {
         if (!token && !inviteToken) return;
         setLoading(true);
@@ -61,18 +70,18 @@ function ResetPasswordForm() {
                 token,
                 inviteToken,
                 password: data.password,
-                nombre: data.nombre
+                nombre: data.nombre,
+                usuario: usuario // 🟢 Se envía el usuario elegido
             });
 
             setCurrentStep(3); // Ir al paso de éxito
             setStatus('success');
 
-            // Iniciar contador
+            // 🟢 MODIFICADO: Solo restamos el contador, la redirección la hace el useEffect
             const timer = setInterval(() => {
                 setCountdown((prev) => {
                     if (prev <= 1) {
                         clearInterval(timer);
-                        router.push('/login');
                         return 0;
                     }
                     return prev - 1;
@@ -88,8 +97,6 @@ function ResetPasswordForm() {
     };
 
     if (!token && !inviteToken) {
-
-        // ... Token inválido ...
         return (
             <div className="bg-white/90 backdrop-blur-xl p-8 rounded-3xl shadow-2xl border border-white/50 text-center max-w-sm mx-auto">
                 <div className="h-20 w-20 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6 border border-red-100/50">
@@ -201,13 +208,38 @@ function ResetPasswordForm() {
                                         className="w-full rounded-xl border border-slate-200 bg-slate-50 pl-11 pr-4 py-3 text-slate-700 outline-none transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 focus:bg-white"
                                     />
                                 </div>
-                                {errors.nombre && <span className="text-xs font-medium text-red-500 ml-1">{errors.nombre.message}</span>}
+                                {errors.nombre && <span className="text-xs font-medium text-red-500 ml-1">{errors.nombre.message as string}</span>}
                             </div>
+
+                            {/* 🟢 NUEVO: Input de Nombre de Usuario (Solo visible si es invitación) */}
+                            {inviteToken && (
+                                <div className="space-y-1.5 animate-in fade-in slide-in-from-bottom-2">
+                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider ml-1 flex justify-between">
+                                        Nombre de Usuario
+                                        <span className="text-[10px] text-slate-400 normal-case font-medium">Usado para iniciar sesión</span>
+                                    </label>
+                                    <div className="relative group">
+                                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-blue-500 transition-colors">
+                                            <AtSign size={18} />
+                                        </div>
+                                        <input
+                                            type="text"
+                                            required
+                                            placeholder="Ej: jperez"
+                                            value={usuario}
+                                            onChange={(e) => setUsuario(e.target.value.trim().toLowerCase())}
+                                            className="w-full rounded-xl border border-slate-200 bg-slate-50 pl-11 pr-4 py-3 text-slate-700 outline-none transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 focus:bg-white lowercase"
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
                             <button
                                 type="button"
                                 onClick={async () => {
                                     const val = watch('nombre');
-                                    if (val) setCurrentStep(2);
+                                    // 🟢 Modificado: Obliga a llenar el usuario si es invitación
+                                    if (val && (!inviteToken || usuario.trim() !== '')) setCurrentStep(2);
                                 }}
                                 className="w-full rounded-xl bg-slate-900 py-3.5 font-bold text-white shadow-lg hover:bg-slate-800 transition-all active:scale-[0.98]"
                             >
@@ -242,7 +274,7 @@ function ResetPasswordForm() {
                                         {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                     </button>
                                 </div>
-                                {errors.password && <span className="text-xs font-medium text-red-500 ml-1">{errors.password.message}</span>}
+                                {errors.password && <span className="text-xs font-medium text-red-500 ml-1">{errors.password.message as string}</span>}
                             </div>
 
                             {/* REPETIR CLAVE */}
@@ -269,7 +301,7 @@ function ResetPasswordForm() {
                                         {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                     </button>
                                 </div>
-                                {errors.confirmPassword && <span className="text-xs font-medium text-red-500 ml-1">{errors.confirmPassword.message}</span>}
+                                {errors.confirmPassword && <span className="text-xs font-medium text-red-500 ml-1">{errors.confirmPassword.message as string}</span>}
                             </div>
 
                             <button
@@ -292,12 +324,11 @@ function ResetPasswordForm() {
                 </form>
             </div>
             <p className="text-center text-slate-400/80 text-xs mt-6">
-                &copy; {new Date().getFullYear()} FormApp Inc. Todos los derechos reservados.
+                &copy; {new Date().getFullYear()} Nos Planet SAC. Todos los derechos reservados.
             </p>
         </div>
     );
 }
-
 
 export default function ResetPasswordPage() {
     return (

@@ -11,8 +11,8 @@ interface EmpresaConfig {
   logo_url?: string;
   codigo_formato?: string;
   revision_actual?: string;
-  direccion_majes?: string;
-  direccion_olmos?: string;
+  direccion_principal?: string; // 🟢 Reemplaza majes/olmos
+  sedes_adicionales?: string[]; // 🟢 Nuevo array del backend
   actividad_economica?: string;
 }
 
@@ -255,14 +255,13 @@ export const generarPDFUniversal = async (
   const doc = new jsPDF();
 
   // --- 1. CARGAR LOGO PRINCIPAL ---
-  // Usamos window.location.origin para asegurar que busque en el Frontend (puerto 3000)
-  // Asegúrate de que logo.png esté en la carpeta /public
   let logoBase64: string | null = null;
   try {
-    const logoUrl = `${window.location.origin}/logo.png`;
-    logoBase64 = await getBase64FromUrl(logoUrl);
+    if (empresa.logo_url) {
+      logoBase64 = await getBase64FromUrl(empresa.logo_url);
+    }
   } catch (e) {
-    console.error("No se pudo cargar el logo", e);
+    console.error("No se pudo cargar el logo de la empresa", e);
   }
 
   // --- 2. OBTENER TOTAL DE TRABAJADORES (MAESTRO) ---
@@ -328,12 +327,12 @@ export const generarPDFUniversal = async (
   doc.text(empresa.nombre, marginLeft, currentY + 20);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(6);
-  const direccionMostrar =
-    data.sede_empresa === "Olmos"
-      ? `Olmos: ${empresa.direccion_olmos || "-"}`
-      : `Majes: ${empresa.direccion_majes || "-"}`;
+  const sede = data.sede_empresa || "Principal";
+  const direccionMostrar = `Sede: ${sede} - Dir: ${empresa.direccion_principal || "-"}`;
+
   const dirLines = doc.splitTextToSize(direccionMostrar, colLeftWidth);
   doc.text(dirLines, marginLeft, currentY + 24);
+
   const alturaDir = dirLines.length * 3;
 
   doc.setFont("helvetica", "bold");
@@ -358,8 +357,8 @@ export const generarPDFUniversal = async (
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(7);
-  doc.text(empresa.codigo_formato || "FPGC 4.8 RH", colRightX, rightY + 3);
-  doc.text(`Revisión ${data.revision_usada || "06"}`, colRightX, rightY + 7);
+  doc.text(empresa.codigo_formato || "-", colRightX, rightY + 3);
+  doc.text(`Revisión ${data.revision_usada || "00"}`, colRightX, rightY + 7);
 
   rightY += 15;
   doc.setFontSize(7);
@@ -395,11 +394,7 @@ export const generarPDFUniversal = async (
   rightY += 12;
   doc.setFontSize(7);
   doc.text("Actividad económica", colRightX, rightY);
-  doc.text(
-    `${empresa.actividad_economica || "Principal - 0150"}`,
-    colRightX + 28,
-    rightY,
-  );
+  doc.text(`${empresa.actividad_economica || "-"}`, colRightX + 28, rightY);
 
   currentY = Math.max(currentY + 26 + alturaDir, rightY + 5);
   currentY += 5;

@@ -78,7 +78,7 @@ const generarPDF = async (req, res) => {
         day: "numeric",
         month: "long",
         year: "numeric",
-      })
+      }),
     );
 
     y -= 15;
@@ -91,9 +91,9 @@ const generarPDF = async (req, res) => {
 
     page1.drawText(
       `Por el presente adjunto evidencia de capacitación realizada el día ${new Date(
-        cap.fecha
+        cap.fecha,
       ).toLocaleDateString("es-PE")}.`,
-      { x: MARGEN_IZQ, y, size: 11, font: fontRegular }
+      { x: MARGEN_IZQ, y, size: 11, font: fontRegular },
     );
     y -= 35;
 
@@ -166,7 +166,7 @@ const generarPDF = async (req, res) => {
 
     drawDetail(
       "Total Asistentes",
-      `${cap.participantes.length} (Hombres: ${cap.total_hombres} / Mujeres: ${cap.total_mujeres})`
+      `${cap.participantes.length} (Hombres: ${cap.total_hombres} / Mujeres: ${cap.total_mujeres})`,
     );
 
     // =========================================================
@@ -175,7 +175,7 @@ const generarPDF = async (req, res) => {
     const templatePath = path.join(
       process.cwd(),
       "templates",
-      "plantilla_acta.pdf"
+      "plantilla_acta.pdf",
     );
     const templateBytes = fs.readFileSync(templatePath);
     const templatePdf = await PDFDocument.load(templateBytes);
@@ -320,12 +320,34 @@ const generarPDF = async (req, res) => {
       }
     }
 
+    // =========================================================
+    //        AGREGADO: PIE DE PÁGINA (Acta y Paginación)
+    // =========================================================
+    const pages = pdfDoc.getPages();
+    const totalPages = pages.length;
+
+    for (let i = 0; i < totalPages; i++) {
+      const page = pages[i];
+      const { width: pageWidth } = page.getSize();
+
+      const textoPiePagina = `Código de Acta: ${cap.codigo_acta || "S/N"}   |   Página ${i + 1} de ${totalPages}`;
+      const anchoTextoPie = fontRegular.widthOfTextAtSize(textoPiePagina, 9);
+
+      page.drawText(textoPiePagina, {
+        x: (pageWidth - anchoTextoPie) / 2, // Centrado horizontalmente
+        y: 20, // A 20 puntos del final de la hoja
+        size: 9,
+        font: fontRegular,
+        color: rgb(0.3, 0.3, 0.3), // Gris oscuro
+      });
+    }
+
     // 3. Guardar y enviar
     const pdfBytes = await pdfDoc.save();
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename=Acta-${cap.codigo_acta}.pdf`
+      `attachment; filename=Acta-${cap.codigo_acta}.pdf`,
     );
     res.send(Buffer.from(pdfBytes));
   } catch (error) {

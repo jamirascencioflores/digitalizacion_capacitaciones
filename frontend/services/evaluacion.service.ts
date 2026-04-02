@@ -27,7 +27,7 @@ export const createEvaluacion = async (data: CrearEvaluacionDTO) => {
 // 🟢 ESTA ES LA QUE FALTABA: Actualizar
 export const updateEvaluacion = async (
   id: number,
-  data: CrearEvaluacionDTO
+  data: CrearEvaluacionDTO,
 ) => {
   const response = await api.put(`/evaluaciones/${id}`, data);
   return response.data;
@@ -47,8 +47,10 @@ export const getResultados = async (id_evaluacion: number) => {
 
 // Link Público
 export const getLinkExamen = (id_evaluacion: number) => {
-  if (typeof window === "undefined") return "";
-  const baseUrl = window.location.origin;
+  const baseUrl =
+    process.env.NEXT_PUBLIC_FRONTEND_URL ||
+    (typeof window !== "undefined" ? window.location.origin : "");
+
   return `${baseUrl}/evaluacion/${id_evaluacion}`;
 };
 
