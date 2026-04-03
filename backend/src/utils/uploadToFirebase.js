@@ -1,67 +1,76 @@
+//backend/src/utils/uploadToFirebase.js
 const { storage } = require("../config/firebase");
-const streamifier = require("streamifier");
-const path = require("path");
+const sharp = require("sharp"); // 🟢 Importamos sharp
 
 /**
- * Subir desde BUFFER (multer memoryStorage)
+ * Subir desde BUFFER (Convierte TODO a WebP optimizado)
  */
-const uploadFromBuffer = (buffer, folder = "sistema_capacitaciones/otros", originalName = "archivo.png") => {
-    return new Promise(async (resolve, reject) => {
-        try {
-            const fileName = `${Date.now()}_${originalName}`;
-            const filePath = `${folder}/${fileName}`;
-            const fileRef = storage.file(filePath);
+const uploadFromBuffer = (
+  buffer,
+  folder = "sistema_capacitaciones/otros",
+  originalName = "archivo.webp",
+) => {
+  return new Promise(async (resolve, reject) => {
+    try {
+      // 🟢 1. MAGIA DE SHARP: Comprime y convierte a WebP (Calidad 80%)
+      const webpBuffer = await sharp(buffer).webp({ quality: 80 }).toBuffer();
 
-            await fileRef.save(buffer, {
-                metadata: { contentType: "image/png" } // O detectar por extensión
-            });
+      // 2. Aseguramos que el nombre tenga extensión .webp
+      const nombreBase = originalName.split(".")[0] || "img";
+      const fileName = `${Date.now()}_${nombreBase}.webp`;
+      const filePath = `${folder}/${fileName}`;
+      const fileRef = storage.file(filePath);
 
-            const [url] = await fileRef.getSignedUrl({
-                action: 'read',
-                expires: '01-01-2100'
-            });
+      // 3. Subimos el buffer ya optimizado
+      await fileRef.save(webpBuffer, {
+        metadata: { contentType: "image/webp" },
+      });
 
-            resolve({
-                secure_url: url,
-                public_id: filePath
-            });
-        } catch (error) {
-            reject(error);
-        }
-    });
+      const [url] = await fileRef.getSignedUrl({
+        action: "read",
+        expires: "01-01-2100",
+      });
+
+      resolve({ secure_url: url, public_id: filePath });
+    } catch (error) {
+      console.error("Error en uploadFromBuffer:", error);
+      reject(error);
+    }
+  });
 };
 
 /**
- * Subir desde BASE64 (firma dibujada)
+ * Subir desde BASE64 (Firma dibujada)
  */
 const uploadFromBase64 = async (base64, folder = "firmas_trabajadores") => {
-    try {
-        const base64Data = base64.replace(/^data:image\/\w+;base64,/, "");
-        const buffer = Buffer.from(base64Data, 'base64');
+  try {
+    // 1. Extraemos solo los datos crudos del base64
+    const base64Data = base64.replace(/^data:image\/\w+;base64,/, "");
+    const bufferOriginal = Buffer.from(base64Data, "base64");
 
-        const fileName = `${Date.now()}_firma.png`;
-        const filePath = `${folder}/${fileName}`;
-        const fileRef = storage.file(filePath);
+    // 🟢 2. MAGIA DE SHARP: Repasamos la firma para optimizarla al máximo
+    const webpBuffer = await sharp(bufferOriginal)
+      .webp({ quality: 80, alphaQuality: 100 }) // alphaQuality mantiene el fondo transparente perfecto
+      .toBuffer();
 
-        await fileRef.save(buffer, {
-            metadata: { contentType: "image/png" }
-        });
+    const fileName = `${Date.now()}_firma.webp`;
+    const filePath = `${folder}/${fileName}`;
+    const fileRef = storage.file(filePath);
 
-        const [url] = await fileRef.getSignedUrl({
-            action: 'read',
-            expires: '01-01-2100'
-        });
+    await fileRef.save(webpBuffer, {
+      metadata: { contentType: "image/webp" },
+    });
 
-        return {
-            secure_url: url,
-            public_id: filePath
-        };
-    } catch (error) {
-        throw error;
-    }
+    const [url] = await fileRef.getSignedUrl({
+      action: "read",
+      expires: "01-01-2100",
+    });
+
+    return { secure_url: url, public_id: filePath };
+  } catch (error) {
+    console.error("Error en uploadFromBase64:", error);
+    throw error;
+  }
 };
 
-module.exports = {
-    uploadFromBuffer,
-    uploadFromBase64,
-};
+module.exports = { uploadFromBuffer, uploadFromBase64 };

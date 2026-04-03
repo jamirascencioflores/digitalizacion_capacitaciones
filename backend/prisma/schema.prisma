@@ -11,17 +11,30 @@ datasource db {
 // 1. CONFIGURACIÓN DE LA EMPRESA
 // --------------------------------------
 model empresa {
-  id_empresa          Int    @id @default(autoincrement())
-  nombre              String @default("AGRICOLA PAMPA BAJA S.A.C.") @db.VarChar(100)
-  ruc                 String @default("20411808972") @db.VarChar(20)
-  direccion_majes     String @default("Km 4.5 Carretera via Majes") @db.VarChar(150)
-  direccion_olmos     String @default("Proyecto de Irrigación Olmos Lote C-8") @db.VarChar(150)
-  actividad_economica String @default("Principal - 0150") @db.VarChar(50)
-  codigo_formato      String @default("FPGC 4.8 RH") @db.VarChar(20)
-  revision_actual     String @default("06") @db.VarChar(10) 
+  id_empresa          Int      @id @default(autoincrement())
+  nombre              String   @db.VarChar(100)
+  ruc                 String   @db.VarChar(20)
+  direccion_principal String   @default("Sede Principal") @db.VarChar(150)
   
-  bot_activo          Boolean @default(false) // Este será el Público (Landing)
-  bot_interno_activo  Boolean @default(false) // 🟢 NUEVO: Este será el Interno (Dashboard)
+  sedes_adicionales   Json?    // Guardará un arreglo ["Sede Olmos", "Fundo X", "Planta Y"]
+
+  actividad_economica String   @db.VarChar(50)
+  codigo_formato      String   @db.VarChar(20)
+  revision_actual     String   @db.VarChar(10)
+  estado              Boolean  @default(true)
+  fecha_registro      DateTime @default(now()) 
+  
+  logo_url            String?  @db.Text
+  color_principal     String?  @default("#1f2937") @db.VarChar(20)
+
+  bot_activo          Boolean  @default(false)
+  bot_interno_activo  Boolean  @default(false)
+
+  usuarios            usuarios[]
+  capacitaciones      capacitaciones[]
+  trabajadores        trabajadores[]
+  planes_anuales      PlanAnual[]
+  notificaciones      Notificacion[]
 }
 
 // --------------------------------------
@@ -29,19 +42,20 @@ model empresa {
 // --------------------------------------
 model usuarios {
   id_usuario      Int       @id @default(autoincrement())
+  id_empresa      Int?      // 🟢 NUEVO: Nullable para SOPORTE, obligatorio para el resto
   nombre          String    @db.VarChar(100)
   usuario         String    @unique @db.VarChar(50)
   email           String?   @unique @db.VarChar(150)
   contrasena      String?   @db.VarChar(255)
-  rol             String    @db.VarChar(30)
+  rol             String    @db.VarChar(30) // Ej: "SOPORTE", "ADMIN", "AUDITOR"
   estado          Boolean   @default(true)
   fecha_creacion  DateTime  @default(now())
   solicita_reset  Boolean   @default(false)
   
-  // Para invitaciones y recuperación de clave
   reset_token     String?   @db.VarChar(255)
   reset_token_exp DateTime?
 
+  empresa         empresa?  @relation(fields: [id_empresa], references: [id_empresa], onDelete: Cascade)
   capacitaciones  capacitaciones[]
 }
 
@@ -50,6 +64,7 @@ model usuarios {
 // --------------------------------------
 model capacitaciones {
   id_capacitacion       Int      @id @default(autoincrement())
+  id_empresa            Int      @default(1) // 🟢 NUEVO: Conectado a la empresa
   codigo_acta           String   @unique @db.VarChar(50)
   
   tema_principal        String   @db.VarChar(255)
@@ -77,17 +92,17 @@ model capacitaciones {
   expositor_nombre      String   @db.VarChar(150)
   expositor_dni         String   @db.VarChar(20)  
   expositor_firma       String?  @db.Text
-  institucion_procedencia String?  @db.VarChar(150)
+  institucion_procedencia String? @db.VarChar(150)
   
   revision_usada        String?  @db.VarChar(10)
   creado_por            Int
   fecha_registro        DateTime @default(now())
 
+  empresa               empresa  @relation(fields: [id_empresa], references: [id_empresa], onDelete: Cascade)
   usuarios              usuarios @relation(fields: [creado_por], references: [id_usuario])
   participantes         participantes[]
   documentos            documentos[]
-
-  evaluaciones    Evaluacion[]
+  evaluaciones          Evaluacion[]
 }
 
 // --------------------------------------
@@ -116,9 +131,10 @@ model participantes {
 model documentos {
   id_documento    Int      @id @default(autoincrement())
   id_capacitacion Int
-  tipo            String   @db.VarChar(50) // Ej: "EVIDENCIA", "ACTA"
+  tipo            String   @db.VarChar(50) 
   url             String   @db.Text 
   nombre_archivo  String?  @db.VarChar(255) 
+  path_storage    String?  @db.VarChar(500) 
   fecha_generado  DateTime @default(now())
 
   capacitaciones  capacitaciones @relation(fields: [id_capacitacion], references: [id_capacitacion], onDelete: Cascade)
@@ -127,10 +143,9 @@ model documentos {
 // --------------------------------------
 // 6. MAESTRO DE TRABAJADORES
 // --------------------------------------
-// CAMBIO IMPORTANTE: Renombramos el modelo a "trabajadores" para que coincida con el código
-// pero usamos @@map para que siga usando la tabla "maestro_trabajadores" en la BD.
 model trabajadores {
   id_trabajador      Int     @id @default(autoincrement())
+  id_empresa         Int     @default(1) // 🟢 NUEVO: Conectado a la empresa
   dni                String  @unique @db.VarChar(20)
   nombres            String  @db.VarChar(150)
   apellidos          String  @db.VarChar(150)
@@ -138,17 +153,20 @@ model trabajadores {
   area               String  @db.VarChar(100)
   cargo              String  @db.VarChar(100)
   firma_url          String? @db.Text 
-  categoria          String?  @default("") 
+  categoria          String? @default("") 
   estado             Boolean @default(true)
 
-  @@map("maestro_trabajadores") // <-- Esto conecta con tu tabla existente
+  empresa            empresa @relation(fields: [id_empresa], references: [id_empresa], onDelete: Cascade)
+
+  @@map("maestro_trabajadores") 
 }
 
 // --------------------------------------
-// 7. PLAN ANUAL (NUEVO)
+// 7. PLAN ANUAL
 // --------------------------------------
 model PlanAnual {
   id_plan           Int      @id @default(autoincrement())
+  id_empresa        Int      @default(1) // 🟢 NUEVO: Conectado a la empresa
   tema              String   @db.VarChar(255)
   objetivo          String?  @db.Text
   temario           String?  @db.Text
@@ -157,24 +175,23 @@ model PlanAnual {
   mes_programado    String?  @db.VarChar(50)
   clasificacion     String?  @db.VarChar(100)
   creado_en         DateTime @default(now())
+
+  empresa           empresa  @relation(fields: [id_empresa], references: [id_empresa], onDelete: Cascade)
 }
 
 // --------------------------------------
 // 8. MÓDULO DE EVALUACIONES (PRE/POST TEST)
 // --------------------------------------
-
 model Evaluacion {
   id_evaluacion   Int      @id @default(autoincrement())
   id_capacitacion Int
-  tipo            String   // 'PRE_TEST', 'POST_TEST', 'SATISFACCION'
-  titulo          String   // Ej: "Examen de Salida - Extintores"
-  estado          Boolean  @default(true) // true: Habilitado para responder
-  fecha_cierre    DateTime? // 🟢 NUEVO: Si es null, es infinito. Si tiene fecha, se cierra ahí.
+  tipo            String   
+  titulo          String   
+  estado          Boolean  @default(true) 
+  fecha_cierre    DateTime? 
   creado_en       DateTime @default(now())
 
-  // Relaciones
   capacitacion    capacitaciones @relation(fields: [id_capacitacion], references: [id_capacitacion], onDelete: Cascade)
-  
   preguntas       Pregunta[]
   intentos        IntentoEvaluacion[]
 }
@@ -182,10 +199,9 @@ model Evaluacion {
 model Pregunta {
   id_pregunta     Int      @id @default(autoincrement())
   id_evaluacion   Int
-  enunciado       String   @db.Text // Ej: "¿Qué tipo de fuego apaga el agua?"
-  puntos          Int      @default(4) // Peso de la pregunta
+  enunciado       String   @db.Text 
+  puntos          Int      @default(4) 
   
-  // Relaciones
   evaluacion      Evaluacion @relation(fields: [id_evaluacion], references: [id_evaluacion], onDelete: Cascade)
   opciones        Opcion[]
 }
@@ -193,29 +209,26 @@ model Pregunta {
 model Opcion {
   id_opcion       Int      @id @default(autoincrement())
   id_pregunta     Int
-  texto           String   // Ej: "Fuego Clase A"
+  texto           String   
   es_correcta     Boolean  @default(false)
 
-  // Relaciones
   pregunta        Pregunta @relation(fields: [id_pregunta], references: [id_pregunta], onDelete: Cascade)
 }
 
-// Historial de respuestas de los trabajadores
 model IntentoEvaluacion {
   id_intento      Int      @id @default(autoincrement())
   id_evaluacion   Int
-  dni_trabajador  String   // Vinculamos con el DNI que ingresan
-  nombre_completo String?  // Guardamos el nombre para no hacer tantos cruces
-  nota            Int      // Ej: 16, 20, 05
-  respuestas_json String?  @db.Text // Guardamos qué opciones marcó { "preg_1": "opc_2", ... }
+  dni_trabajador  String   
+  nombre_completo String?  
+  nota            Int      
+  respuestas_json String?  @db.Text 
   fecha_intento   DateTime @default(now())
 
-  // Relaciones
   evaluacion      Evaluacion @relation(fields: [id_evaluacion], references: [id_evaluacion], onDelete: Cascade)
 }
 
 // --------------------------------------
-// 9. SOLICITUDES DE CONTACTO (LANDING PAGE)
+// 9. SOLICITUDES DE CONTACTO
 // --------------------------------------
 model solicitudes_contacto {
   id_solicitud   Int      @id @default(autoincrement())
@@ -225,18 +238,20 @@ model solicitudes_contacto {
   telefono       String   @db.VarChar(30)
   mensaje        String   @db.Text
   fecha_envio    DateTime @default(now())
-  estado         String   @default("Pendiente") // Sirve para que el Admin marque si ya los contactó
+  estado         String   @default("Pendiente") 
 }
 
 // --------------------------------------
 // 10. NOTIFICACIONES ADMIN
 // --------------------------------------
-
 model Notificacion {
   id              Int      @id @default(autoincrement())
+  id_empresa      Int      @default(1) // 🟢 NUEVO: Conectado a la empresa
   mensaje         String   @db.Text
-  tipo            String   // Ej: "CAPACITACION", "AUDITORIA", "SISTEMA"
+  tipo            String   
   leida           Boolean  @default(false)
   fecha_creacion  DateTime @default(now())
-  url_destino     String?  // Ej: "/dashboard/capacitaciones/15"
+  url_destino     String?  
+
+  empresa         empresa  @relation(fields: [id_empresa], references: [id_empresa], onDelete: Cascade)
 }

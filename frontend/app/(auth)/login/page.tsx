@@ -1,23 +1,20 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-
 import { useForm } from 'react-hook-form';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link'; // 🟢 1. Importamos Link
+import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { Eye, EyeOff, Lock, User, AlertCircle, CheckCircle2, X, ArrowLeft, ShieldCheck } from 'lucide-react';
 import api from '@/services/api';
 import { AxiosError } from 'axios';
 
+import AnimatedLoginBackground from '@/components/ui/AnimatedLoginBackground';
+
 type LoginFormInputs = {
   usuario: string;
   contrasena: string;
 };
-
-import AnimatedLoginBackground from '@/components/ui/AnimatedLoginBackground';
-
-// ... imports ...
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -33,11 +30,11 @@ export default function LoginPage() {
   const [recoveryUser, setRecoveryUser] = useState('');
   const [recoveryStatus, setRecoveryStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
 
-  // Cargar usuario recordado al montar el componente
+  // 🟢 CORRECCIÓN: Cargar usuario recordado asegurando que el form lo registre
   useEffect(() => {
     const savedUser = localStorage.getItem('rememberUser');
     if (savedUser) {
-      setValue('usuario', savedUser);
+      setValue('usuario', savedUser, { shouldValidate: true, shouldDirty: true });
       setRememberMe(true);
     }
   }, [setValue]);
@@ -61,7 +58,6 @@ export default function LoginPage() {
         const data = err.response.data;
 
         if (status === 400 && data.detalles) {
-          // Errores de validación de Zod
           const validationMsg = data.detalles.map((d: any) => d.mensaje).join(', ');
           setErrorGlobal(`Validación: ${validationMsg}`);
         } else if (status === 401) {
@@ -76,15 +72,12 @@ export default function LoginPage() {
       } else {
         setErrorGlobal('No se pudo conectar con el servidor. Verifica tu internet.');
       }
-
     } finally {
       setLoading(false);
     }
   };
 
-
   const handleRecoverySubmit = async (e: React.FormEvent) => {
-    // ... handleRecoverySubmit logic ...
     e.preventDefault();
     if (!recoveryUser) return;
 
@@ -99,15 +92,20 @@ export default function LoginPage() {
 
   return (
     <AnimatedLoginBackground>
-
       <div className="w-full max-w-md relative z-20">
 
         {/* Tarjeta Glassmorphism Profesional */}
-        <div className="bg-white/90 backdrop-blur-xl p-8 rounded-3xl shadow-2xl border border-white/50 relative">
+        <div className="bg-white/90 backdrop-blur-xl p-8 rounded-3xl shadow-2xl border border-white/50 relative pt-12">
 
-          {/* Botón de Regresar (Dentro del Card)                {/* Removido botón Volver a petición del usuario */}
+          {/* 🟢 CORRECCIÓN: Botón de Regresar posicionado de forma elegante */}
+          <Link
+            href="/"
+            className="absolute top-6 left-6 text-slate-400 hover:text-blue-600 transition-all flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest hover:-translate-x-1"
+          >
+            <ArrowLeft size={14} strokeWidth={3} /> Volver al Inicio
+          </Link>
 
-          <div className="mb-8 text-center">
+          <div className="mb-8 text-center mt-2">
             <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-500/30 mb-5 transform rotate-3">
               <ShieldCheck size={28} />
             </div>
@@ -183,9 +181,6 @@ export default function LoginPage() {
               </button>
             </div>
 
-
-
-
             {errorGlobal && (
               <div className="rounded-xl bg-red-50 p-3 flex items-start gap-3 text-sm text-red-600 border border-red-100 animate-in fade-in slide-in-from-top-2">
                 <AlertCircle size={18} className="shrink-0 mt-0.5" />
@@ -226,15 +221,12 @@ export default function LoginPage() {
                 transition: background-color 5000s ease-in-out 0s;
             }
         `}} />
-
       </div>
-
 
       {/* MODAL DE RECUPERACIÓN - Refinado con Animación */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-md p-4 animate-in fade-in duration-300">
           <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 slide-in-from-bottom-2 duration-300">
-
 
             {/* Cabecera Limpia */}
             <div className="px-6 py-4 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
@@ -326,8 +318,6 @@ export default function LoginPage() {
           </div>
         </div>
       )}
-
-
     </AnimatedLoginBackground>
   );
 }

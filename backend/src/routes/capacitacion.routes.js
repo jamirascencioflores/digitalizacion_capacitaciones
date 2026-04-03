@@ -14,19 +14,7 @@ const path = require("path");
 const fs = require("fs");
 
 // --- CONFIGURACIÓN MULTER ---
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const dir = "uploads/evidencias/";
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    cb(null, dir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, "evidencia-" + uniqueSuffix + path.extname(file.originalname));
-  },
-});
+const storage = multer.memoryStorage(); // 🟢 Queda completamente vacío para usar la RAM
 
 const upload = multer({
   storage: storage,
@@ -35,7 +23,7 @@ const upload = multer({
 
 // --- RUTAS ---
 
-// 1. Crear (POST) - MODO UNIFICADO (Firma + Galería)
+// 1. Crear (POST) - MODO UNIFICADO (Firma + Galería + Firmas Participantes)
 router.post(
   "/",
   verificarToken,
@@ -43,19 +31,24 @@ router.post(
     console.log("🚦 POST /capacitaciones - Iniciando carga unificada...");
     next();
   },
-  // Aceptamos fotos de galería Y la firma del expositor
+  // Aceptamos fotos, firma del expositor y las firmas de los trabajadores
   upload.fields([
     { name: "evidencias", maxCount: 20 },
     { name: "expositor_firma", maxCount: 1 },
+    { name: "firmas_participantes" }, // 🟢 NUEVO: Firmas manuales
   ]),
   (req, res, next) => {
     // 🟢 LOG SEGURO: Usamos validación opcional para evitar el TypeError
     const evidencias =
       req.files && req.files["evidencias"] ? req.files["evidencias"].length : 0;
     const tieneFirma = req.files && req.files["expositor_firma"] ? "SÍ" : "NO";
+    const firmasTrabajadores =
+      req.files && req.files["firmas_participantes"]
+        ? req.files["firmas_participantes"].length
+        : 0;
 
     console.log(
-      `🚦 Multer finalizado. Evidencias detectadas: ${evidencias}, Firma detectada: ${tieneFirma}`,
+      `🚦 Multer finalizado. Evidencias: ${evidencias} | Firma Expositor: ${tieneFirma} | Firmas Participantes: ${firmasTrabajadores}`,
     );
     next();
   },
@@ -88,10 +81,11 @@ router.get("/:id", verificarToken, controller.obtenerCapacitacion);
 router.put(
   "/:id",
   verificarToken,
-  // También permitimos actualizar firma o agregar fotos en el PUT
+  // 🟢 AÑADIDO: También permitimos recibir firmas de participantes en el Editar
   upload.fields([
     { name: "evidencias", maxCount: 20 },
     { name: "expositor_firma", maxCount: 1 },
+    { name: "firmas_participantes" },
   ]),
   controller.actualizarCapacitacion,
 );

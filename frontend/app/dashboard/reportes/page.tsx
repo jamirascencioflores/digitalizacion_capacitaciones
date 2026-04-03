@@ -15,7 +15,10 @@ import {
     Edit,
     Trash2,
     AlertTriangle,
-    Users
+    Users,
+    CheckCircle2,
+    AlertCircle,
+    X
 } from 'lucide-react';
 import { generarPDFUniversal } from '@/services/pdf.service';
 import { getEmpresaConfig } from '@/services/empresa.service';
@@ -118,22 +121,34 @@ export default function ReportesPage() {
         setConfirmCode('');
     };
 
+    const [mensajeAlerta, setMensajeAlerta] = useState<{ tipo: 'exito' | 'error', texto: string } | null>(null);
+
     const handleConfirmDelete = async () => {
         if (confirmCode !== deleteModal.codigo) {
-            alert("El código ingresado no coincide.");
+            setMensajeAlerta({ tipo: 'error', texto: 'El código ingresado no coincide ❌' });
             return;
         }
         if (!deleteModal.id) return;
 
         setDeleting(true);
         try {
-            await api.delete(`/capacitaciones/${deleteModal.id}`);
-            setCapacitaciones(prev => prev.filter(c => c.id_capacitacion !== deleteModal.id));
-            setDeleteModal({ show: false, id: null, codigo: '' });
-            alert("Capacitación eliminada con éxito ✅");
+            const response = await api.delete(`/capacitaciones/${deleteModal.id}`);
+
+            if (response.status === 200 || response.status === 204) {
+                // 1. Cerramos el modal inmediatamente
+                setDeleteModal({ show: false, id: null, codigo: '' });
+                setConfirmCode("");
+
+                // 2. Mostramos la alerta FLOTANTE con título y mensaje
+                setMensajeAlerta({ tipo: 'exito', texto: '¡Capacitación eliminada con éxito! 🗑️' });
+
+                setCapacitaciones(prev => prev.filter(c => c.id_capacitacion !== deleteModal.id));
+
+                setTimeout(() => setMensajeAlerta(null), 4000);
+            }
         } catch (error) {
             console.error(error);
-            alert("Error al eliminar.");
+            setMensajeAlerta({ tipo: 'error', texto: 'Error al intentar eliminar' });
         } finally {
             setDeleting(false);
         }
@@ -181,6 +196,22 @@ export default function ReportesPage() {
                     Exportar Excel
                 </button>
             </div>
+
+            {/* 🟢 ALERTA FLOTANTE ESTANDARIZADA */}
+            {mensajeAlerta && (
+                <div className={`fixed top-6 left-1/2 transform -translate-x-1/2 z-100 w-[95%] max-w-md p-4 rounded-xl flex items-start gap-3 shadow-2xl border transition-all animate-in slide-in-from-top-8 fade-in ${mensajeAlerta.tipo === 'error' ? 'bg-white dark:bg-slate-900 border-red-500 text-red-800 dark:text-red-200' : 'bg-white dark:bg-slate-900 border-green-500 text-green-800 dark:text-green-200'}`}>
+                    <div className={`p-2 rounded-full ${mensajeAlerta.tipo === 'error' ? 'bg-red-100 dark:bg-red-900/30' : 'bg-green-100 dark:bg-green-900/30'}`}>
+                        {mensajeAlerta.tipo === 'error' ? <AlertCircle className="text-red-600 dark:text-red-400" size={24} /> : <CheckCircle2 className="text-green-600 dark:text-green-400" size={24} />}
+                    </div>
+                    <div className="flex-1 pt-1">
+                        <h4 className="font-extrabold text-sm">{mensajeAlerta.tipo === 'error' ? 'Acción Requerida' : 'Operación Exitosa'}</h4>
+                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{mensajeAlerta.texto}</p>
+                    </div>
+                    <button type="button" onClick={() => setMensajeAlerta(null)} className="p-1 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full transition-colors">
+                        <X size={20} className="text-gray-400" />
+                    </button>
+                </div>
+            )}
 
             {/* LISTA / TABLA */}
             <div className="bg-gray-50/20 dark:bg-slate-800/20 md:bg-white md:dark:bg-slate-800 md:rounded-xl md:shadow-sm md:border md:border-gray-200 md:dark:border-slate-700 overflow-hidden">

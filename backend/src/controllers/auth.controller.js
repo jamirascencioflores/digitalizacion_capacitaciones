@@ -15,13 +15,15 @@ const solicitarRecuperacion = async (req, res) => {
 
     const user = await prisma.usuarios.findFirst({
       where: {
-        OR: [{ usuario: usuario }, { email: usuario }]
-      }
+        OR: [{ usuario: usuario }, { email: usuario }],
+      },
     });
 
     if (!user || !user.email) {
       console.log("⚠️ [Auth] Usuario no encontrado o sin email.");
-      return res.status(404).json({ error: "El usuario o correo no está registrado en el sistema." });
+      return res.status(404).json({
+        error: "El usuario o correo no está registrado en el sistema.",
+      });
     }
 
     // Generar token de 15 min
@@ -30,16 +32,17 @@ const solicitarRecuperacion = async (req, res) => {
 
     await prisma.usuarios.update({
       where: { id_usuario: user.id_usuario },
-      data: { reset_token: token, reset_token_exp: expira }
+      data: { reset_token: token, reset_token_exp: expira },
     });
 
-    const frontendUrl = req.headers.origin || process.env.FRONTEND_URL || "http://localhost:3000";
+    const frontendUrl =
+      req.headers.origin || process.env.FRONTEND_URL || "http://localhost:3000";
     const resetUrl = `${frontendUrl}/reset-password?token=${token}`;
 
     const enviado = await sendEmailConPlantilla(user.email, 3, {
       reset_link: resetUrl,
       rol: rol || user.rol || "Usuario",
-      ROL: (rol || user.rol || "Usuario").toUpperCase()
+      ROL: (rol || user.rol || "Usuario").toUpperCase(),
     });
 
     res.json({ message: "Se ha enviado un correo con las instrucciones." });
@@ -49,31 +52,57 @@ const solicitarRecuperacion = async (req, res) => {
 };
 
 /**
- * 1.5 INVITAR USUARIO (NUEVO: Usa JWT para no crear usuario aún)
+ * 1.5 INVITAR USUARIO (NUEVO: Lógica Multitenant para Soporte y Admins)
  */
 const invitarUsuario = async (req, res) => {
   try {
-    const { email, rol } = req.body;
+    const { email, rol, id_empresa } = req.body; // 🟢 Extraemos id_empresa del body
+
+    // 🟢 MODIFICADO: Lógica Inteligente para asignar Empresa
+    let empresaDestino = 1;
+
+    if (req.user?.rol?.toUpperCase() === "SOPORTE") {
+      // Si eres SOPORTE, usamos el ID de la empresa que elegiste en el Modal
+      if (!id_empresa)
+        return res.status(400).json({ error: "Falta especificar la empresa" });
+      empresaDestino = Number(id_empresa);
+    } else {
+      // Si es un Admin normal, forzamos a que solo pueda invitar a SU propia empresa
+      empresaDestino = req.user?.id_empresa || 1;
+    }
 
     // Verificar si ya existe
     const existe = await prisma.usuarios.findUnique({ where: { email } });
-    if (existe) return res.status(400).json({ error: "El usuario ya está registrado." });
+    if (existe)
+      return res
+        .status(400)
+        .json({ error: "El usuario ya está registrado en el sistema." });
 
-    // Generar un token firmado (JWT) que expire en 24h
-    const inviteToken = jwt.sign({ email, rol, type: 'INVITE' }, process.env.JWT_SECRET || 'secret_key', { expiresIn: '24h' });
+    // Incluimos empresaDestino en el payload del token
+    const inviteToken = jwt.sign(
+      { email, rol, type: "INVITE", id_empresa: empresaDestino }, // 👈 Aquí se guarda el ID correcto
+      process.env.JWT_SECRET || "secret_key",
+      { expiresIn: "24h" },
+    );
 
-    const frontendUrl = req.headers.origin || process.env.FRONTEND_URL || "http://localhost:3000";
+    const frontendUrl =
+      req.headers.origin || process.env.FRONTEND_URL || "http://localhost:3000";
     const resetUrl = `${frontendUrl}/reset-password?inviteToken=${inviteToken}`;
 
     const enviado = await sendEmailConPlantilla(email, 3, {
       reset_link: resetUrl,
       rol: rol || "Usuario",
-      ROL: (rol || "Usuario").toUpperCase()
+      ROL: (rol || "Usuario").toUpperCase(),
     });
+
+    if (!enviado) throw new Error("Fallo al enviar el correo por Brevo");
 
     res.json({ message: "Invitación enviada con éxito." });
   } catch (error) {
-    res.status(500).json({ error: "Error al enviar invitación" });
+    console.error("Error al enviar invitación:", error);
+    res
+      .status(500)
+      .json({ error: "Error al enviar la invitación por correo." });
   }
 };
 
@@ -82,12 +111,36 @@ const invitarUsuario = async (req, res) => {
  */
 const restablecerConToken = async (req, res) => {
   try {
-    const { token, inviteToken, password, nombre } = req.body;
+    // 🟢 Agregamos 'usuario' a los datos que recibimos
+    const { token, inviteToken, password, nombre, usuario } = req.body;
 
     if (inviteToken) {
       // Caso 1: Invitación (Crear usuario nuevo)
-      const decoded = jwt.verify(inviteToken, process.env.JWT_SECRET || 'secret_key');
-      if (decoded.type !== 'INVITE') throw new Error("Token inválido");
+      const decoded = jwt.verify(
+        inviteToken,
+        process.env.JWT_SECRET || "secret_key",
+      );
+      if (decoded.type !== "INVITE") throw new Error("Token inválido");
+
+      // 🟢 NUEVO: Validar que envíe un usuario y que no exista
+      if (!usuario) {
+        return res
+          .status(400)
+          .json({ error: "El nombre de usuario es obligatorio." });
+      }
+
+      const usuarioExiste = await prisma.usuarios.findUnique({
+        where: { usuario: usuario },
+      });
+
+      if (usuarioExiste) {
+        return res
+          .status(400)
+          .json({
+            error:
+              "Ese nombre de usuario ya está en uso. Por favor, elige otro.",
+          });
+      }
 
       const salt = await bcrypt.genSalt(10);
       const hash = await bcrypt.hash(password, salt);
@@ -96,11 +149,12 @@ const restablecerConToken = async (req, res) => {
         data: {
           email: decoded.email,
           rol: decoded.rol,
-          usuario: decoded.email.split('@')[0] + Math.floor(Math.random() * 99),
-          nombre: nombre || decoded.email.split('@')[0],
+          id_empresa: decoded.id_empresa,
+          usuario: usuario, // 🟢 Guardamos el usuario que él eligió
+          nombre: nombre,
           contrasena: hash,
-          estado: true
-        }
+          estado: true,
+        },
       });
 
       return res.json({ message: "Registro completado con éxito." });
@@ -110,11 +164,14 @@ const restablecerConToken = async (req, res) => {
     const user = await prisma.usuarios.findFirst({
       where: {
         reset_token: token,
-        reset_token_exp: { gt: new Date() }
-      }
+        reset_token_exp: { gt: new Date() },
+      },
     });
 
-    if (!user) return res.status(404).json({ error: "El token es inválido o ha expirado." });
+    if (!user)
+      return res
+        .status(404)
+        .json({ error: "El token es inválido o ha expirado." });
 
     const salt = await bcrypt.genSalt(10);
     const hash = await bcrypt.hash(password, salt);
@@ -127,8 +184,8 @@ const restablecerConToken = async (req, res) => {
         reset_token: null,
         reset_token_exp: null,
         solicita_reset: false,
-        estado: true
-      }
+        estado: true,
+      },
     });
 
     res.json({ message: "Contraseña actualizada con éxito." });
@@ -136,7 +193,6 @@ const restablecerConToken = async (req, res) => {
     res.status(500).json({ error: "Error al procesar la solicitud." });
   }
 };
-
 
 /**
  * 3. VERIFICAR TOKEN (Devuelve datos del usuario o invitación)
@@ -146,8 +202,16 @@ const verificarToken = async (req, res) => {
     const { token, inviteToken } = req.query;
 
     if (inviteToken) {
-      const decoded = jwt.verify(inviteToken, process.env.JWT_SECRET || 'secret_key');
-      return res.json({ email: decoded.email, rol: decoded.rol, nombre: '', isInvite: true });
+      const decoded = jwt.verify(
+        inviteToken,
+        process.env.JWT_SECRET || "secret_key",
+      );
+      return res.json({
+        email: decoded.email,
+        rol: decoded.rol,
+        nombre: "",
+        isInvite: true,
+      });
     }
 
     if (!token) return res.status(400).json({ error: "Token requerido" });
@@ -155,18 +219,27 @@ const verificarToken = async (req, res) => {
     const user = await prisma.usuarios.findFirst({
       where: {
         reset_token: token,
-        reset_token_exp: { gt: new Date() }
-      }
+        reset_token_exp: { gt: new Date() },
+      },
     });
 
-    if (!user) return res.status(404).json({ error: "Token inválido o expirado" });
+    if (!user)
+      return res.status(404).json({ error: "Token inválido o expirado" });
 
-    res.json({ email: user.email, rol: user.rol, nombre: user.nombre, isInvite: false });
+    res.json({
+      email: user.email,
+      rol: user.rol,
+      nombre: user.nombre,
+      isInvite: false,
+    });
   } catch (error) {
     res.status(500).json({ error: "Error al verificar token" });
   }
 };
 
-module.exports = { solicitarRecuperacion, invitarUsuario, restablecerConToken, verificarToken };
-
-
+module.exports = {
+  solicitarRecuperacion,
+  invitarUsuario,
+  restablecerConToken,
+  verificarToken,
+};

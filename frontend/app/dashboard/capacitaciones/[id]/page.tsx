@@ -12,12 +12,11 @@ import { useTheme } from 'next-themes';
 import {
     ArrowLeft, Save, UserPlus, Trash2, FileText, Clock, Briefcase,
     Building2, CheckCircle2, UploadCloud, Loader2, Image as ImageIcon,
-    PenTool, Camera, X, UserCheck, UserX, AlertCircle, BarChart3, PieChart, Users, Search
+    PenTool, Camera, X, UserCheck, UserX, AlertCircle, BarChart3, PieChart, Users, Search, Eye
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import SignatureCanvas from 'react-signature-canvas';
 import SignaturePad from '@/components/ui/SignaturePad';
-import { uploadImageToLocal, uploadBase64 } from '@/services/upload.service';
 import EvaluacionesTab from '@/components/EvaluacionesTab';
 
 const getImageUrl = (url: string | null | undefined) => {
@@ -82,14 +81,15 @@ interface TrabajadorFaltante {
     area: string;
 }
 
+// 🟢 CORRECCIÓN: Adaptamos la interfaz a la BD actual
 interface EmpresaConfig {
     codigo_formato: string;
     ruc: string;
-    direccion_majes: string;
-    direccion_olmos: string;
+    direccion_principal: string;
     actividad_economica: string;
     revision_actual: string;
     nombre: string;
+    logo_url?: string;
 }
 
 interface DocumentoExistente {
@@ -158,7 +158,7 @@ type Inputs = {
         genero: string;
         condicion: string;
         firma_url?: string;
-    es_maestra?: boolean;
+        es_maestra?: boolean;
     }[];
 };
 
@@ -167,7 +167,7 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
     const router = useRouter();
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
-    const [uploadingRow, setUploadingRow] = useState<number | null>(null);
+    const [uploadingRow] = useState<number | null>(null);
     const { user, loading: authLoading } = useAuth();
     const { theme } = useTheme();
     const [mounted, setMounted] = useState(false);
@@ -201,6 +201,9 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
     const [empresaConfig, setEmpresaConfig] = useState<EmpresaConfig | null>(null);
     const [listaTrabajadores, setListaTrabajadores] = useState<TrabajadorSelect[]>([]);
 
+    // 🟢 NUEVO: Estado para las sedes dinámicas
+    const [sedes, setSedes] = useState<string[]>([]);
+
     const { register, control, handleSubmit, setValue, watch, reset, setError, setFocus, formState: { errors } } = useForm<Inputs>();
     const { fields, append, remove, replace, update } = useFieldArray({ control, name: "participantes" });
     const participantesWatch = watch('participantes');
@@ -209,15 +212,22 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
         const loadData = async () => {
             if (authLoading) return;
             try {
-                const [config, trabajadoresRes, planesRes] = await Promise.all([
+                // 🟢 Añadimos la petición de sedes a Promise.all
+                const [config, trabajadoresRes, planesRes, sedesRes] = await Promise.all([
                     getEmpresaConfig(),
                     api.get('/trabajadores/listado'),
-                    api.get('/gestion/temas')
+                    api.get('/gestion/temas'),
+                    api.get('/empresa/mis-sedes') // Petición de sedes
                 ]);
+
                 setEmpresaConfig(config);
                 setListaTrabajadores(trabajadoresRes.data);
                 setPlanes(planesRes.data);
 
+                // 🟢 Guardamos las sedes
+                setSedes(sedesRes.data.sedes);
+
+                // 🟢 Carga de la capacitación existente
                 const { data } = await api.get(`/capacitaciones/${id}`);
 
                 if (data.documentos) setFotosExistentes(data.documentos.filter((d: DocumentoExistente) => d.tipo === 'EVIDENCIA_FOTO'));
@@ -229,7 +239,8 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
 
                 reset({
                     ...data,
-                    institucion_procedencia: data.institucion_procedencia || null,
+                    // Si la BD guardó una institución la usamos, sino usamos la actual de la empresa
+                    institucion_procedencia: data.institucion_procedencia || sedesRes.data.nombreEmpresa,
                     expositor_firma: data.expositor_firma || '',
                     revision_usada: data.revision_usada || config.revision_actual || '06',
                     fecha: fechaFormat,
@@ -238,6 +249,13 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
                     participantes: data.participantes || [],
                     area_objetivo: data.area_objetivo || ''
                 });
+
+                // Si por alguna razón la BD guardó la capacitación con la sede vacía
+                // y hay sedes disponibles, seleccionamos la primera
+                if (!data.sede_empresa && sedesRes.data.sedes.length > 0) {
+                    setValue('sede_empresa', sedesRes.data.sedes[0]);
+                }
+
                 if (data.evaluaciones) setEvaluaciones(data.evaluaciones);
             } catch (error) {
                 console.error("Error cargando:", error);
@@ -255,7 +273,7 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
         }
         document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, [id, authLoading, router, reset]);
+    }, [id, authLoading, router, reset, setValue]);
 
     useEffect(() => {
         if (!participantesWatch) return;
@@ -353,8 +371,6 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
         setMostrarSugerencias(false);
     };
 
-    const sedeSeleccionada = watch('sede_empresa');
-
     const getOpcionesFila = (index: number) => {
         const filaActual = participantesWatch[index];
         const areaSeleccionada = filaActual?.area;
@@ -393,6 +409,8 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
 
         return { opcionesNombres, opcionesDNI, cargosDisponibles, areasDisponibles };
     };
+
+    const [firmasNuevas, setFirmasNuevas] = useState<Record<number, File>>({});
 
     const autocompletarFila = (index: number, trabajador: TrabajadorSelect) => {
         if (!trabajador) return;
@@ -489,13 +507,15 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
     const handleUploadFirma = async (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
-        setUploadingRow(index);
-        try {
-            const webpFile = await convertirAWebp(file);
-            const url = await uploadImageToLocal(webpFile);
-            if (url) setValue(`participantes.${index}.firma_url`, url, { shouldValidate: true });
-        }
-        finally { setUploadingRow(null); }
+
+        const webpFile = await convertirAWebp(file);
+
+        // ❌ YA NO LLAMAMOS A uploadImageToLocal()
+        // 🟢 Lo guardamos en nuestro estado temporal
+        setFirmasNuevas(prev => ({ ...prev, [index]: webpFile }));
+
+        // 🟢 Mostramos la visualización temporal
+        setValue(`participantes.${index}.firma_url`, URL.createObjectURL(webpFile), { shouldValidate: true, shouldDirty: true });
     };
 
     const abrirModalFirma = (index: number) => setIndiceFirmaActiva(index);
@@ -504,7 +524,6 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
     const guardarFirmaModal = async () => {
         if (workerPadRef.current && !workerPadRef.current.isEmpty() && indiceFirmaActiva !== null) {
             const canvas = workerPadRef.current.getCanvas();
-
             const tempCanvas = document.createElement('canvas');
             tempCanvas.width = canvas.width;
             tempCanvas.height = canvas.height;
@@ -519,29 +538,38 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
             const base64 = tempCanvas.toDataURL('image/webp', 0.8);
             const dni = participantesWatch[indiceFirmaActiva].dni || 'sin_dni';
 
-            const url = await uploadBase64(base64, `firma_trab_${dni}_${Date.now()}.webp`);
+            // ❌ YA NO LLAMAMOS A uploadBase64()
+            // 🟢 Solo lo convertimos a File físico en la RAM del navegador
+            const res = await fetch(base64);
+            const blob = await res.blob();
+            const file = new File([blob], `firma_${dni}.webp`, { type: 'image/webp' });
 
-            if (url) {
-                setValue(`participantes.${indiceFirmaActiva}.firma_url`, url, {
-                    shouldValidate: true,
-                    shouldDirty: true
-                });
-            }
+            // 🟢 Lo guardamos en nuestro estado temporal (la bolsita de firmas)
+            setFirmasNuevas(prev => ({ ...prev, [indiceFirmaActiva]: file }));
+
+            // 🟢 Generamos una URL visual (blob:) solo para que el usuario vea su firma en pantalla
+            setValue(`participantes.${indiceFirmaActiva}.firma_url`, URL.createObjectURL(file), { shouldValidate: true, shouldDirty: true });
+
             cerrarModalFirma();
         }
     };
+
+    const [fotoParaVer, setFotoParaVer] = useState<string | null>(null);
 
     const handleUploadFirmaExpositor = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
             setUploadingExpositor(true);
             try {
+                // 🟢 Solo convertimos a WebP y lo guardamos en el estado del formulario.
+                // Ya no llamamos a uploadImageToLocal() aquí.
                 const webpFile = await convertirAWebp(file);
-                const url = await uploadImageToLocal(webpFile);
-                if (url) setValue('expositor_firma', url);
+
+                // Lo guardamos como File para que el onSubmit lo meta en el FormData
+                setValue('expositor_firma', webpFile, { shouldDirty: true });
             } catch (error) {
                 console.error(error);
-                setMensajeAlerta({ tipo: 'error', texto: "Error al subir firma expositor" });
+                setMensajeAlerta({ tipo: 'error', texto: "Error al procesar firma expositor" });
             } finally {
                 setUploadingExpositor(false);
             }
@@ -551,11 +579,12 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
     const recargarEvaluaciones = async () => {
         try {
             const { data } = await api.get(`/capacitaciones/${id}`);
-            if (data.evaluaciones) {
-                setEvaluaciones(data.evaluaciones);
+            if (data && data.evaluaciones) {
+                // 🟢 El [...] es vital para que la lista aparezca sin F5
+                setEvaluaciones([...data.evaluaciones]);
             }
         } catch (error) {
-            console.error("Error al recargar evaluaciones:", error);
+            console.error("Error al sincronizar:", error);
         }
     };
 
@@ -567,6 +596,7 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
         try {
             const formData = new FormData();
 
+            // 🟢 MODIFICACIÓN: Procesamiento de la firma del Expositor para mandarla en el FormData
             if (modoFirma === 'pantalla' && signaturePadRef.current && !signaturePadRef.current.isEmpty()) {
                 const pad = signaturePadRef.current;
                 const canvas = pad.getCanvas();
@@ -583,16 +613,25 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
                 }
 
                 const base64 = tempCanvas.toDataURL('image/webp', 0.8);
-                const urlFirmaExpositor = await uploadBase64(base64, `firma_expositor_${Date.now()}.webp`);
 
-                if (urlFirmaExpositor) {
-                    formData.append('expositor_firma', urlFirmaExpositor);
-                }
+                // 🟢 En lugar de subirlo aquí, lo convertimos de Base64 a File
+                const resBase = await fetch(base64);
+                const blob = await resBase.blob();
+                const fileFirma = new File([blob], `firma_expositor_${Date.now()}.webp`, { type: 'image/webp' });
+
+                // 🟢 Lo agregamos al formData para que el backend lo reciba como archivo
+                formData.append('expositor_firma', fileFirma);
+
+            } else if (data.expositor_firma instanceof File) {
+                // Si viene del input file (ya convertido a WebP)
+                formData.append('expositor_firma', data.expositor_firma);
 
             } else if (data.expositor_firma && (data.expositor_firma as unknown as FileList)[0] instanceof File) {
                 const fileList = data.expositor_firma as unknown as FileList;
                 formData.append('expositor_firma', fileList[0]);
-            } else if (data.expositor_firma && typeof data.expositor_firma === 'string') {
+
+            } else if (data.expositor_firma && typeof data.expositor_firma === 'string' && !data.expositor_firma.startsWith("http")) {
+                // Por si acaso quedó un string residual que no sea una URL de firebase
                 formData.append('expositor_firma', data.expositor_firma);
             }
 
@@ -619,6 +658,12 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
             }));
 
             formData.append('participantes', JSON.stringify(participantesData));
+
+            Object.entries(firmasNuevas).forEach(([indexStr, file]) => {
+                // Le ponemos el prefijo del índice (ej: "0_firma.webp") para que el backend sepa de quién es
+                const newFile = new File([file], `${indexStr}_${file.name}`, { type: file.type });
+                formData.append('firmas_participantes', newFile);
+            });
 
             evidenciasNuevas.forEach((file) => {
                 formData.append('evidencias', file);
@@ -702,6 +747,7 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
     };
 
     if (loading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-blue-600" size={40} /></div>;
+
 
     return (
         <div className="max-w-6xl mx-auto space-y-6 pb-20 relative px-4">
@@ -828,7 +874,7 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
             </div>
 
             {mainTab === 'evaluaciones' ? (
-                <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 bg-white dark:bg-slate-800 p-1 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700">
+                <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <EvaluacionesTab
                         idCapacitacion={Number(id)}
                         evaluacionesExistentes={evaluaciones}
@@ -848,17 +894,23 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                             <div>
-                                <label className="block text-[11px] font-bold text-gray-400 dark:text-slate-500 uppercase mb-3 tracking-widest">Sede de Ejecución</label>
-                                <div className="flex gap-4">
-                                    <label className={`flex flex-1 items-center gap-3 border-2 p-4 rounded-2xl transition-all ${esAuditor ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'} ${sedeSeleccionada === 'Majes' ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 ring-4 ring-blue-500/10' : 'bg-gray-50 dark:bg-slate-900/50 border-transparent hover:border-gray-200 dark:hover:border-slate-700'}`}>
-                                        <input type="radio" disabled={esAuditor} value="Majes" {...register("sede_empresa")} className="accent-blue-600 w-4 h-4" />
-                                        <span className="font-bold text-gray-700 dark:text-gray-200">PEDREGAL - MAJES</span>
-                                    </label>
-                                    <label className={`flex flex-1 items-center gap-3 border-2 p-4 rounded-2xl transition-all ${esAuditor ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'} ${sedeSeleccionada === 'Olmos' ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 ring-4 ring-blue-500/10' : 'bg-gray-50 dark:bg-slate-900/50 border-transparent hover:border-gray-200 dark:hover:border-slate-700'}`}>
-                                        <input type="radio" disabled={esAuditor} value="Olmos" {...register("sede_empresa")} className="accent-blue-600 w-4 h-4" />
-                                        <span className="font-bold text-gray-700 dark:text-gray-200">TIERRAS NUEVAS - OLMOS</span>
-                                    </label>
+                                <label className={`block text-[11px] font-bold uppercase mb-3 tracking-widest ${errors.sede_empresa ? 'text-red-600' : 'text-gray-400 dark:text-slate-500'}`}>Sede de Ejecución <span className="text-red-500">*</span></label>
+                                <div className="relative">
+                                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-slate-600"><Building2 size={18} /></div>
+                                    <select
+                                        disabled={esAuditor}
+                                        {...register('sede_empresa', { required: "Debes seleccionar una sede" })}
+                                        className={`w-full border-2 rounded-2xl pl-10 pr-4 py-3 font-bold outline-none transition-all appearance-none disabled:opacity-60 disabled:bg-gray-100 dark:disabled:bg-slate-900 ${errors.sede_empresa ? 'border-red-500 bg-red-50 dark:bg-red-950/20 ring-4 ring-red-500/10 text-red-900 dark:text-red-200' : 'bg-gray-50 dark:bg-slate-900/50 border-transparent focus:border-blue-500 text-gray-700 dark:text-gray-200'}`}
+                                    >
+                                        <option value="" className="dark:bg-slate-800" disabled>-- Seleccionar Sede --</option>
+                                        {sedes.map((sede, index) => (
+                                            <option key={index} value={sede} className="dark:bg-slate-800 font-medium">
+                                                {sede.toUpperCase()}
+                                            </option>
+                                        ))}
+                                    </select>
                                 </div>
+                                {errors.sede_empresa && <span className="text-red-500 text-[10px] font-black mt-2 block uppercase animate-pulse">{errors.sede_empresa.message as string}</span>}
                             </div>
                             <div>
                                 <label className={`block text-[11px] font-bold uppercase mb-3 tracking-widest ${errors.codigo_acta ? 'text-red-600' : 'text-gray-400 dark:text-slate-500'}`}>Código de Acta Oficial <span className="text-red-500">*</span></label>
@@ -1045,22 +1097,38 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
                             <div className="min-h-[140px] flex items-center justify-center border-2 border-dashed border-gray-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900/30 overflow-hidden">
                                 {watch('expositor_firma') ? (
                                     <div className="flex flex-col items-center gap-2 animate-in fade-in zoom-in duration-300 p-2">
-                                        <div className="relative h-24 w-64 bg-white border dark:border-slate-700 rounded-xl p-2 shadow-sm flex items-center justify-center">
+
+                                        {/* 🟢 CONTENEDOR DE LA IMAGEN MODIFICADO CON EL HOVER Y EL CLICK */}
+                                        <div
+                                            className="relative h-24 w-64 bg-white border dark:border-slate-700 rounded-xl p-2 shadow-sm flex items-center justify-center group cursor-pointer overflow-hidden"
+                                            onClick={() => {
+                                                const url = getImageUrl(watch('expositor_firma') as string);
+                                                if (url) setFotoParaVer(url);
+                                            }}
+                                            title="Ver firma en grande"
+                                        >
                                             {(() => {
                                                 const imageUrl = getImageUrl(watch('expositor_firma') as string);
                                                 if (!imageUrl) {
                                                     return <div className="text-gray-400 text-[10px] italic">Sin firma registrada</div>;
                                                 }
                                                 return (
-                                                    /* eslint-disable-next-line @next/next/no-img-element */
-                                                    <img src={imageUrl} alt="Firma Expositor" className="max-h-full max-w-full object-contain" />
+                                                    <>
+                                                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                        <img src={imageUrl} alt="Firma Expositor" className="max-h-full max-w-full object-contain" />
+                                                        {/* 🟢 CAPA OSCURA CON EL OJITO */}
+                                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-[1px]">
+                                                            <Eye size={24} className="text-white drop-shadow-md" />
+                                                        </div>
+                                                    </>
                                                 );
                                             })()}
                                         </div>
+
                                         <div className="flex items-center justify-center gap-2 text-green-600 dark:text-green-400 font-medium text-sm mt-1">
                                             <CheckCircle2 size={16} /> Firmada con éxito
                                             {!esAuditor && (
-                                                <button type="button" onClick={() => setValue('expositor_firma', '')} className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full text-red-500 transition ml-2">
+                                                <button type="button" onClick={() => setValue('expositor_firma', '')} className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full text-red-500 transition ml-2" title="Eliminar firma">
                                                     <Trash2 size={14} />
                                                 </button>
                                             )}
@@ -1297,17 +1365,32 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
                                 </label>
                             )}
 
-                            {/* Fotos Existentes de la BD */}
+                            {/* 🟢 Fotos Existentes de la BD */}
                             {fotosExistentes.map(f => (
                                 <div key={f.id_documento} className="aspect-square relative rounded-2xl overflow-hidden border border-gray-100 dark:border-slate-800 group shadow-sm">
                                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                                    <img src={getImageUrl(f.url)} alt="Evidencia Existente" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                                        <a href={getImageUrl(f.url)} target="_blank" rel="noopener noreferrer" className="bg-white text-gray-800 p-2 rounded-full shadow-lg hover:scale-110 transition-transform">
-                                            <Camera size={16} />
-                                        </a>
+                                    <img
+                                        src={f.url}
+                                        alt="Evidencia Existente"
+                                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 cursor-pointer"
+                                        onClick={() => setFotoParaVer(f.url)}
+                                    />
+                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity flex items-center justify-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setFotoParaVer(f.url)}
+                                            className="bg-blue-500 text-white p-2 rounded-full shadow-lg hover:scale-110 transition-transform pointer-events-auto"
+                                            title="Ver foto"
+                                        >
+                                            <Eye size={16} />
+                                        </button>
                                         {!esAuditor && (
-                                            <button type="button" onClick={() => removeFotoExistente(f.id_documento)} className="bg-red-500 text-white p-2 rounded-full shadow-lg hover:scale-110 transition-transform">
+                                            <button
+                                                type="button"
+                                                onClick={(e) => { e.stopPropagation(); removeFotoExistente(f.id_documento); }}
+                                                className="bg-red-500 text-white p-2 rounded-full shadow-lg hover:scale-110 transition-transform pointer-events-auto"
+                                                title="Eliminar foto"
+                                            >
                                                 <Trash2 size={16} />
                                             </button>
                                         )}
@@ -1315,19 +1398,40 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
                                 </div>
                             ))}
 
-                            {/* Fotos Nuevas que se subirán */}
-                            {evidenciasNuevas.map((f, i) => (
-                                <div key={i} className="aspect-square relative rounded-2xl overflow-hidden border-2 border-blue-400 dark:border-blue-600 group shadow-sm animate-in zoom-in-95 duration-300">
-                                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                                    <img src={URL.createObjectURL(f)} alt="Nueva evidencia" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                                    <div className="absolute top-0 left-0 bg-blue-600 text-[10px] tracking-widest text-white px-2 py-0.5 font-bold rounded-br-lg z-10 shadow-sm">NUEVA</div>
-                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                        <button type="button" onClick={() => removeEvidenciaNueva(i)} className="bg-red-500 text-white p-2 rounded-full shadow-lg hover:scale-110 transition-transform">
-                                            <Trash2 size={16} />
-                                        </button>
+                            {/* 🟢 Fotos Nuevas que se subirán */}
+                            {evidenciasNuevas.map((f, i) => {
+                                const tempUrl = URL.createObjectURL(f);
+                                return (
+                                    <div key={i} className="aspect-square relative rounded-2xl overflow-hidden border-2 border-blue-400 dark:border-blue-600 group shadow-sm animate-in zoom-in-95 duration-300">
+                                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                                        <img
+                                            src={tempUrl}
+                                            alt="Nueva evidencia"
+                                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 cursor-pointer"
+                                            onClick={() => setFotoParaVer(tempUrl)}
+                                        />
+                                        <div className="absolute top-0 left-0 bg-blue-600 text-[10px] tracking-widest text-white px-2 py-0.5 font-bold rounded-br-lg z-10 shadow-sm pointer-events-none">NUEVA</div>
+                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity flex items-center justify-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => setFotoParaVer(tempUrl)}
+                                                className="bg-blue-500 text-white p-2 rounded-full shadow-lg hover:scale-110 transition-transform pointer-events-auto"
+                                                title="Ver foto"
+                                            >
+                                                <Eye size={16} />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={(e) => { e.stopPropagation(); removeEvidenciaNueva(i); }}
+                                                className="bg-red-500 text-white p-2 rounded-full shadow-lg hover:scale-110 transition-transform pointer-events-auto"
+                                                title="Eliminar foto"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </div>
                                     </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     </div>
 
@@ -1344,6 +1448,32 @@ export default function EditarCapacitacionPage({ params }: { params: Promise<{ i
                         )}
                     </div>
                 </form>
+
+            )}
+
+            {/* --- MODAL DE PREVISUALIZACIÓN DE IMÁGENES --- */}
+            {fotoParaVer && (
+                <div className="fixed inset-0 z-200 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-300">
+                    <div className="relative max-w-4xl w-full flex flex-col items-center animate-in zoom-in-95 duration-300">
+                        <button
+                            onClick={() => setFotoParaVer(null)}
+                            className="absolute -top-12 right-0 p-2 text-white/70 hover:text-white transition-colors bg-white/10 hover:bg-white/20 rounded-full"
+                        >
+                            <X size={32} />
+                        </button>
+                        <div className="bg-white dark:bg-slate-900 p-2 rounded-3xl shadow-2xl overflow-hidden border border-white/20">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                                src={fotoParaVer}
+                                alt="Previsualización"
+                                className="max-h-[80vh] w-auto object-contain rounded-2xl"
+                            />
+                        </div>
+                        <p className="mt-4 text-white/50 font-bold text-[10px] uppercase tracking-[0.2em]">
+                            Vista Previa de Documento
+                        </p>
+                    </div>
+                </div>
             )}
         </div>
     );

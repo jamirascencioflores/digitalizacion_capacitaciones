@@ -13,12 +13,11 @@ import { useTheme } from 'next-themes';
 import {
     ArrowLeft, Save, UserPlus, Trash2, FileText, Clock, Briefcase,
     Building2, CheckCircle2, UploadCloud, Loader2, Image as ImageIcon,
-    PenTool, Camera, X, Search, UserCheck, Users, AlertCircle
+    PenTool, Camera, X, Search, UserCheck, Users, AlertCircle, Eye,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import SignatureCanvas from 'react-signature-canvas';
 import SignaturePad from '@/components/ui/SignaturePad';
-import { uploadImageToLocal, uploadBase64 } from '@/services/upload.service';
 
 // --- UTILIDADES ---
 const normalizar = (texto: any) => {
@@ -65,11 +64,11 @@ interface PlanItem {
 interface EmpresaConfig {
     codigo_formato: string;
     ruc: string;
-    direccion_majes: string;
-    direccion_olmos: string;
+    direccion_principal: string;
     actividad_economica: string;
     revision_actual: string;
     nombre: string;
+    logo_url?: string;
 }
 
 interface TrabajadorSelect {
@@ -130,7 +129,7 @@ type Inputs = {
 export default function CrearCapacitacionPage() {
     const router = useRouter();
     const [loading, setLoading] = useState(false);
-    const [uploadingRow, setUploadingRow] = useState<number | null>(null);
+    const [uploadingRow] = useState<number | null>(null);
     const { user, loading: authLoading } = useAuth();
     const { theme } = useTheme();
     const [mounted, setMounted] = useState(false);
@@ -154,6 +153,7 @@ export default function CrearCapacitacionPage() {
     const [indiceFirmaActiva, setIndiceFirmaActiva] = useState<number | null>(null);
     const workerPadRef = useRef<SignatureCanvas>(null);
     const [empresaConfig, setEmpresaConfig] = useState<EmpresaConfig | null>(null);
+    const [sedes, setSedes] = useState<string[]>([]);
 
     useEffect(() => {
         if (!authLoading && user?.rol === 'auditor') {
@@ -161,21 +161,23 @@ export default function CrearCapacitacionPage() {
         }
     }, [user, authLoading, router]);
 
-    const { register, control, handleSubmit, setValue, watch, setError, setFocus, formState: { errors } } = useForm<Inputs>({
+    const { register, control, handleSubmit, setValue, watch, setError, getValues, setFocus, formState: { errors } } = useForm<Inputs>({
         defaultValues: {
             fecha: new Date().toISOString().split('T')[0],
             hora_inicio: "08:00",
             hora_termino: "09:00",
             total_horas: "1",
-            revision_usada: "06",
-            sede_empresa: "Majes",
-            institucion_procedencia: "AGRICOLA PAMPA BAJA S.A.C.",
+            revision_usada: "",
+            sede_empresa: "",
+            institucion_procedencia: "",
             participantes: [{ numero: 1, dni: '', apellidos_nombres: '', area: '', cargo: '', genero: 'M', condicion: '' }]
         }
     });
 
     const { fields, append, remove, replace, update } = useFieldArray({ control, name: "participantes" });
     const participantesWatch = watch('participantes');
+
+    const [firmasNuevas, setFirmasNuevas] = useState<Record<number, File>>({});
 
     useEffect(() => {
         const cargarDatos = async () => {
@@ -204,6 +206,31 @@ export default function CrearCapacitacionPage() {
         document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, [setValue]);
+
+    useEffect(() => {
+        const cargarSedes = async () => {
+            try {
+                const res = await api.get('/empresa/mis-sedes');
+
+                // 🟢 1. Guardamos el array de sedes en el estado
+                setSedes(res.data.sedes);
+
+                // 🟢 2. Seleccionamos la primera sede por defecto
+                if (res.data.sedes.length > 0 && !getValues('sede_empresa')) {
+                    setValue('sede_empresa', res.data.sedes[0]);
+                }
+
+                // 🟢 3. Llenamos el nombre de la empresa automáticamente
+                if (!getValues('institucion_procedencia')) {
+                    setValue('institucion_procedencia', res.data.nombreEmpresa);
+                }
+
+            } catch (error) {
+                console.error("Error cargando sedes:", error);
+            }
+        };
+        cargarSedes();
+    }, [setValue, getValues]);
 
     useEffect(() => {
         if (!participantesWatch) return;
@@ -266,7 +293,6 @@ export default function CrearCapacitacionPage() {
         setMostrarSugerencias(false);
     };
 
-    const sedeSeleccionada = watch('sede_empresa');
 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files.length > 0) {
@@ -352,13 +378,12 @@ export default function CrearCapacitacionPage() {
     const handleUploadFirma = async (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
-        setUploadingRow(index);
-        try {
-            const webpFile = await convertirAWebp(file);
-            const url = await uploadImageToLocal(webpFile);
-            if (url) setValue(`participantes.${index}.firma_url`, url);
-        }
-        finally { setUploadingRow(null); }
+
+        const webpFile = await convertirAWebp(file);
+
+        setFirmasNuevas(prev => ({ ...prev, [index]: webpFile }));
+
+        setValue(`participantes.${index}.firma_url`, URL.createObjectURL(webpFile), { shouldValidate: true, shouldDirty: true });
     };
 
     const abrirModalFirma = (index: number) => setIndiceFirmaActiva(index);
@@ -367,7 +392,6 @@ export default function CrearCapacitacionPage() {
     const guardarFirmaModal = async () => {
         if (workerPadRef.current && !workerPadRef.current.isEmpty() && indiceFirmaActiva !== null) {
             const canvas = workerPadRef.current.getCanvas();
-
             const tempCanvas = document.createElement('canvas');
             tempCanvas.width = canvas.width;
             tempCanvas.height = canvas.height;
@@ -382,17 +406,22 @@ export default function CrearCapacitacionPage() {
             const base64 = tempCanvas.toDataURL('image/webp', 0.8);
             const dni = participantesWatch[indiceFirmaActiva].dni || 'sin_dni';
 
-            const url = await uploadBase64(base64, `firma_trab_${dni}_${Date.now()}.webp`);
+            // 🟢 Convertimos el Base64 a un File físico
+            const res = await fetch(base64);
+            const blob = await res.blob();
+            const file = new File([blob], `firma_${dni}.webp`, { type: 'image/webp' });
 
-            if (url) {
-                setValue(`participantes.${indiceFirmaActiva}.firma_url`, url, {
-                    shouldValidate: true,
-                    shouldDirty: true
-                });
-            }
+            // 🟢 Guardamos en el estado y mostramos la temporal
+            setFirmasNuevas(prev => ({ ...prev, [indiceFirmaActiva]: file }));
+            setValue(`participantes.${indiceFirmaActiva}.firma_url`, URL.createObjectURL(file), { shouldValidate: true, shouldDirty: true });
+
             cerrarModalFirma();
         }
     };
+
+    const [fotoParaVer, setFotoParaVer] = useState<string | null>(null);
+
+    const [firmaExpositorFile, setFirmaExpositorFile] = useState<File | null>(null);
 
     const handleUploadFirmaExpositor = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -400,11 +429,16 @@ export default function CrearCapacitacionPage() {
             setUploadingExpositor(true);
             try {
                 const webpFile = await convertirAWebp(file);
-                const url = await uploadImageToLocal(webpFile);
-                if (url) setValue('expositor_firma', url);
+
+                // 1. Guardamos el archivo físico real en nuestro estado temporal
+                setFirmaExpositorFile(webpFile);
+
+                // 2. Generamos una URL visual falsa (blob:) para que la imagen se vea en tu pantalla
+                setValue('expositor_firma', URL.createObjectURL(webpFile), { shouldValidate: true });
+
             } catch (error) {
                 console.error(error);
-                setMensajeAlerta({ tipo: 'error', texto: "Error al subir firma del expositor" });
+                setMensajeAlerta({ tipo: 'error', texto: "Error al procesar la firma del expositor" });
             } finally {
                 setUploadingExpositor(false);
             }
@@ -412,14 +446,28 @@ export default function CrearCapacitacionPage() {
     };
 
     const generarCodigoActa = () => {
-        const sede = watch('sede_empresa') === 'Majes' ? 'M' : 'O';
+        // 🟢 1. Obtenemos el nombre de la sede actual (o un valor por defecto)
+        const sedeSeleccionada = watch('sede_empresa') || 'General';
+
+        // 🟢 2. Extraemos las iniciales dinámicamente (Ej: "Sede Olmos" -> "SO")
+        const inicialesSede = sedeSeleccionada
+            .split(' ')
+            .filter(palabra => palabra.length > 0) // Evita espacios dobles
+            .map(palabra => palabra[0])
+            .join('')
+            .substring(0, 2)
+            .toUpperCase();
+
         const fecha = new Date();
         const yy = String(fecha.getFullYear()).slice(-2);
         const mm = String(fecha.getMonth() + 1).padStart(2, '0');
         const nombreUsr = user?.nombre || 'US';
-        const iniciales = nombreUsr.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+        const inicialesUsr = nombreUsr.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
         const aleatorio = Math.floor(100 + Math.random() * 900);
-        const nuevoCodigo = `ACT-${sede}-${yy}${mm}-${iniciales}-${aleatorio}`;
+
+        // 🟢 3. Armamos el código final con la sigla dinámica
+        const nuevoCodigo = `ACT-${inicialesSede}-${yy}${mm}-${inicialesUsr}-${aleatorio}`;
+
         setValue('codigo_acta', nuevoCodigo, { shouldValidate: true });
     };
 
@@ -430,10 +478,11 @@ export default function CrearCapacitacionPage() {
             const formData = new FormData();
 
             // 1. FIRMA EXPOSITOR
+            // 1. FIRMA EXPOSITOR
             if (modoFirma === 'pantalla' && signaturePadRef.current && !signaturePadRef.current.isEmpty()) {
+                // LÓGICA DE DIBUJO MANUAL (Esto ya lo tenías perfecto)
                 const pad = signaturePadRef.current;
                 const canvas = pad.getCanvas();
-
                 const tempCanvas = document.createElement('canvas');
                 tempCanvas.width = canvas.width;
                 tempCanvas.height = canvas.height;
@@ -443,16 +492,18 @@ export default function CrearCapacitacionPage() {
                     tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
                     tempCtx.drawImage(canvas, 0, 0);
                 }
-
                 const base64 = tempCanvas.toDataURL('image/webp', 0.8);
-                const urlFirmaExpositor = await uploadBase64(base64, `firma_expositor_${Date.now()}.webp`);
-                if (urlFirmaExpositor) {
-                    formData.append('expositor_firma', urlFirmaExpositor);
-                }
-            } else if (data.expositor_firma && (data.expositor_firma as unknown as FileList)[0] instanceof File) {
-                const fileList = data.expositor_firma as unknown as FileList;
-                formData.append('expositor_firma', fileList[0]);
-            } else if (data.expositor_firma && typeof data.expositor_firma === 'string') {
+                const resBase = await fetch(base64);
+                const blob = await resBase.blob();
+                const fileFirmaExpositor = new File([blob], `firma_expositor_${Date.now()}.webp`, { type: 'image/webp' });
+                formData.append('expositor_firma', fileFirmaExpositor);
+
+            } else if (firmaExpositorFile) {
+                // 🟢 NUEVA LÓGICA: Si subió una foto, la sacamos del estado y la mandamos
+                formData.append('expositor_firma', firmaExpositorFile);
+
+            } else if (data.expositor_firma && typeof data.expositor_firma === 'string' && !data.expositor_firma.startsWith('blob:')) {
+                // Si ya había un string (ej: viene de la BD y no es un blob temporal)
                 formData.append('expositor_firma', data.expositor_firma);
             }
 
@@ -473,9 +524,22 @@ export default function CrearCapacitacionPage() {
                 }
             });
 
-            // 4. PARTICIPANTES
+            // 4. PARTICIPANTES Y SUS FIRMAS
             if (data.participantes) {
-                formData.append('participantes', JSON.stringify(data.participantes));
+                // Modificamos el JSON de participantes para no mandar URLs falsas (blob:)
+                const participantesData = data.participantes.map((p, i) => ({
+                    ...p,
+                    numero: i + 1,
+                    firma_url: p.firma_url?.startsWith('blob:') ? null : (p.firma_url || null),
+                }));
+
+                formData.append('participantes', JSON.stringify(participantesData));
+
+                Object.entries(firmasNuevas).forEach(([indexStr, file]) => {
+                    // Le ponemos el prefijo del índice (ej: "0_firma.webp") para que el backend sepa de quién es
+                    const newFile = new File([file], `${indexStr}_${file.name}`, { type: file.type });
+                    formData.append('firmas_participantes', newFile);
+                });
             }
 
             const config = { headers: { "Content-Type": undefined } };
@@ -689,6 +753,34 @@ export default function CrearCapacitacionPage() {
                 </div>
             )}
 
+            {/* --- MODAL DE PREVISUALIZACIÓN DE IMÁGENES --- */}
+            {fotoParaVer && (
+                <div className="fixed inset-0 z-200 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-300">
+                    <div className="relative max-w-4xl w-full flex flex-col items-center animate-in zoom-in-95 duration-300">
+
+                        <button
+                            onClick={() => setFotoParaVer(null)}
+                            className="absolute -top-12 right-0 p-2 text-white/70 hover:text-white transition-colors bg-white/10 hover:bg-white/20 rounded-full"
+                        >
+                            <X size={32} />
+                        </button>
+
+                        <div className="bg-white dark:bg-slate-900 p-2 rounded-3xl shadow-2xl overflow-hidden border border-white/20">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                                src={fotoParaVer}
+                                alt="Previsualización"
+                                className="max-h-[80vh] w-auto object-contain rounded-2xl"
+                            />
+                        </div>
+
+                        <p className="mt-4 text-white/50 font-bold text-[10px] uppercase tracking-[0.2em]">
+                            Vista Previa de Documento
+                        </p>
+                    </div>
+                </div>
+            )}
+
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="flex items-center gap-4">
                     <button type="button" onClick={() => router.back()} className="p-2 hover:bg-gray-200 dark:hover:bg-slate-800 rounded-full transition"><ArrowLeft className="text-gray-600 dark:text-gray-400" /></button>
@@ -738,17 +830,30 @@ export default function CrearCapacitacionPage() {
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div>
-                            <label className="block text-[11px] font-bold text-gray-400 dark:text-slate-500 uppercase mb-3 tracking-widest">Sede de Ejecución</label>
+                            <label className={`block text-[11px] font-bold uppercase mb-3 tracking-widest ${errors.sede_empresa ? 'text-red-600' : 'text-gray-400 dark:text-slate-500'}`}>
+                                Sede de Ejecución
+                            </label>
                             <div className="flex gap-4">
-                                <label className={`flex flex-1 items-center gap-3 cursor-pointer border-2 p-4 rounded-2xl transition-all ${sedeSeleccionada === 'Majes' ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 ring-4 ring-blue-500/10' : 'bg-gray-50 dark:bg-slate-900/50 border-transparent hover:border-gray-200 dark:hover:border-slate-700'}`}>
-                                    <input type="radio" value="Majes" {...register("sede_empresa")} className="accent-blue-600 w-4 h-4" />
-                                    <span className="font-bold text-gray-700 dark:text-gray-200">PEDREGAL - MAJES</span>
-                                </label>
-                                <label className={`flex flex-1 items-center gap-3 cursor-pointer border-2 p-4 rounded-2xl transition-all ${sedeSeleccionada === 'Olmos' ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 ring-4 ring-blue-500/10' : 'bg-gray-50 dark:bg-slate-900/50 border-transparent hover:border-gray-200 dark:hover:border-slate-700'}`}>
-                                    <input type="radio" value="Olmos" {...register("sede_empresa")} className="accent-blue-600 w-4 h-4" />
-                                    <span className="font-bold text-gray-700 dark:text-gray-200">TIERRAS NUEVAS - OLMOS</span>
-                                </label>
+                                <select
+                                    {...register('sede_empresa', { required: "La sede es obligatoria" })}
+                                    className={`w-full border-2 rounded-xl px-4 py-2.5 outline-none transition-all ${errors.sede_empresa
+                                        ? 'border-red-500 bg-red-50 dark:bg-red-950/20 ring-4 ring-red-500/10 text-red-900 dark:text-red-200'
+                                        : 'bg-white dark:bg-slate-900 border-gray-200 dark:border-slate-700 focus:border-blue-500'
+                                        }`}
+                                >
+                                    <option value="">Seleccione una sede...</option>
+                                    {sedes.map((sede, index) => (
+                                        <option key={index} value={sede}>
+                                            {sede}
+                                        </option>
+                                    ))}
+                                </select>
                             </div>
+                            {errors.sede_empresa && (
+                                <span className="text-red-500 text-[10px] font-black mt-2 block uppercase animate-pulse">
+                                    {errors.sede_empresa.message as string}
+                                </span>
+                            )}
                         </div>
                         <div>
                             <label className={`block text-[11px] font-bold uppercase mb-3 tracking-widest ${errors.codigo_acta ? 'text-red-600' : 'text-gray-400 dark:text-slate-500'}`}>Código de Acta Oficial</label>
@@ -889,7 +994,6 @@ export default function CrearCapacitacionPage() {
                                 </select>
                             </div>
                             <div className="grid grid-cols-2 gap-4">
-                                {/* 🔴 CAMPO MODALIDAD CON ALERTA VISUAL */}
                                 <div>
                                     <label className={`block text-[11px] font-bold uppercase mb-3 tracking-widest ${errors.modalidad ? 'text-red-600' : 'text-gray-400 dark:text-slate-500'}`}>
                                         Modalidad <span className="text-red-500">*</span>
@@ -905,7 +1009,6 @@ export default function CrearCapacitacionPage() {
                                     {errors.modalidad && <span className="text-red-500 text-[10px] font-black mt-2 block uppercase">Selección requerida</span>}
                                 </div>
 
-                                {/* 🔴 CAMPO A. CORRECTIVA CON ALERTA VISUAL */}
                                 <div>
                                     <label className={`block text-[11px] font-bold uppercase mb-3 tracking-widest ${errors.accion_correctiva ? 'text-red-600' : 'text-gray-400 dark:text-slate-500'}`}>
                                         A. Correctiva <span className="text-red-500">*</span>
@@ -969,10 +1072,22 @@ export default function CrearCapacitacionPage() {
 
                         <div className="min-h-[140px] flex items-center justify-center border-2 border-dashed border-gray-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900/30 overflow-hidden">
                             {watch('expositor_firma') ? (
-                                <div className="flex flex-col items-center gap-2 animate-in fade-in zoom-in duration-300">
-                                    <div className="bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 p-3 rounded-full shadow-inner"><CheckCircle2 size={32} /></div>
-                                    <span className="text-xs font-black text-green-600 dark:text-green-500 uppercase tracking-widest">Firma Registrada</span>
-                                    <button type="button" onClick={() => setValue('expositor_firma', '')} className="text-[10px] font-bold text-red-500 hover:underline uppercase mt-2">Eliminar y volver a firmar</button>
+                                <div className="flex flex-col items-center gap-3 animate-in fade-in zoom-in duration-300 py-4">
+                                    <div
+                                        className="relative group cursor-pointer border border-green-200 dark:border-green-900/50 rounded-xl overflow-hidden bg-white dark:bg-slate-800 shadow-sm"
+                                        onClick={() => setFotoParaVer(watch('expositor_firma') as string)}
+                                        title="Ver firma"
+                                    >
+                                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                                        <img src={(watch('expositor_firma') as string) || ''} className="h-20 w-40 object-contain p-2" alt="Firma Expositor" />
+                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-[1px]">
+                                            <Eye size={24} className="text-white drop-shadow-md" />
+                                        </div>
+                                    </div>
+                                    <span className="text-[10px] font-black text-green-600 dark:text-green-500 uppercase tracking-widest flex items-center gap-1">
+                                        <CheckCircle2 size={14} /> Firma Registrada
+                                    </span>
+                                    <button type="button" onClick={() => setValue('expositor_firma', '')} className="text-[10px] font-bold text-red-500 hover:text-red-600 transition-colors uppercase mt-1">Eliminar y volver a firmar</button>
                                 </div>
                             ) : (
                                 modoFirma === 'subir' ? (
@@ -1010,8 +1125,6 @@ export default function CrearCapacitacionPage() {
                         </div>
                     </div>
 
-                    {/* 🟢 AQUÍ TAMBIÉN ESTÁ EL CAMBIO CLAVE DE DISEÑO: Quitamos el div 'overflow-x-auto' que cortaba las listas */}
-                    {/* EL GRID SIN OVERFLOW PARA QUE NO SE CORTE EL MENÚ */}
                     <div className="hidden md:grid grid-cols-12 gap-2 text-xs font-bold text-gray-500 mb-2 uppercase px-2">
                         <div className="col-span-1 text-center font-black">#</div>
                         <div className="col-span-2">DNI / ID</div>
@@ -1087,14 +1200,20 @@ export default function CrearCapacitacionPage() {
                                         )} />
                                     </div>
 
-                                    {/* 🟢 ZONA DE FIRMAS (Ajustada para Crear, sin validaciones de Auditor) */}
                                     <div className="col-span-2 flex justify-center items-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
                                         {watch(`participantes.${index}.firma_url`) ? (
-                                            <div className="flex items-center gap-1">
-                                                <div className="p-1.5 bg-green-100 dark:bg-green-900/30 text-green-600 rounded-lg" title="Firma Registrada">
-                                                    <CheckCircle2 size={16} />
+                                            <div className="flex items-center gap-2">
+                                                <div
+                                                    className="relative group/mini cursor-pointer border border-green-200 dark:border-green-900/50 rounded-lg overflow-hidden h-8 w-14 bg-white dark:bg-slate-800 flex items-center justify-center shadow-sm"
+                                                    onClick={() => setFotoParaVer(watch(`participantes.${index}.firma_url`) as string)}
+                                                    title="Ver firma"
+                                                >
+                                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                    <img src={(watch(`participantes.${index}.firma_url`) as string) || ''} className="h-full w-full object-contain px-1" alt="Firma" />
+                                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/mini:opacity-100 transition-opacity flex items-center justify-center">
+                                                        <Eye size={14} className="text-white" />
+                                                    </div>
                                                 </div>
-                                                {/* 🟢 Solo permite borrar si la firma NO es maestra (se hizo en el momento) */}
                                                 {!(participantesWatch[index] as any).es_maestra && (
                                                     <button
                                                         type="button"
@@ -1118,7 +1237,6 @@ export default function CrearCapacitacionPage() {
                                             </>
                                         )}
 
-                                        {/* SEPARADOR Y BOTÓN DE BORRAR FILA */}
                                         <div className="w-px h-5 bg-gray-200 dark:bg-slate-700 mx-1"></div>
                                         <button type="button" onClick={() => remove(index)} className="p-1.5 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-lg hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-colors" title="Eliminar trabajador">
                                             <Trash2 size={16} />
@@ -1146,9 +1264,29 @@ export default function CrearCapacitacionPage() {
                         </label>
                         {evidencias.map((f, i) => (
                             <div key={i} className="aspect-square relative rounded-2xl overflow-hidden border border-gray-100 dark:border-slate-800 group animate-in zoom-in-95 duration-300 shadow-sm">
-                                <Image src={URL.createObjectURL(f)} alt="Evidencia" fill className="object-cover group-hover:scale-105 transition-transform duration-500" unoptimized />
-                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                    <button type="button" onClick={() => removeEvidencia(i)} className="bg-red-500 text-white p-2 rounded-full shadow-lg hover:scale-110 transition-transform">
+                                <Image
+                                    src={URL.createObjectURL(f)}
+                                    alt="Evidencia"
+                                    fill
+                                    className="object-cover group-hover:scale-105 transition-transform duration-500 cursor-pointer"
+                                    unoptimized
+                                    onClick={() => setFotoParaVer(URL.createObjectURL(f))}
+                                />
+                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity flex items-center justify-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setFotoParaVer(URL.createObjectURL(f))}
+                                        className="bg-blue-500 text-white p-2 rounded-full shadow-lg hover:scale-110 transition-transform pointer-events-auto"
+                                        title="Ver foto"
+                                    >
+                                        <Eye size={16} />
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={(e) => { e.stopPropagation(); removeEvidencia(i); }}
+                                        className="bg-red-500 text-white p-2 rounded-full shadow-lg hover:scale-110 transition-transform pointer-events-auto"
+                                        title="Eliminar foto"
+                                    >
                                         <Trash2 size={16} />
                                     </button>
                                 </div>
@@ -1157,7 +1295,6 @@ export default function CrearCapacitacionPage() {
                     </div>
                 </div>
 
-                {/* BOTONES DE ACCIÓN FINAL */}
                 <div className="flex flex-col sm:flex-row justify-end gap-3 pt-8 mt-4 border-t border-gray-100 dark:border-slate-800">
                     <button type="button" onClick={() => router.back()} className="px-8 py-3.5 border-2 border-gray-100 dark:border-slate-800 rounded-2xl text-gray-500 dark:text-slate-500 hover:bg-gray-50 dark:hover:bg-slate-900 transition-all font-bold uppercase tracking-widest text-xs">CANCELAR</button>
                     <button type="submit" disabled={loading} className="px-12 py-3.5 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-2xl font-black shadow-2xl transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-3 group tracking-widest text-xs uppercase">

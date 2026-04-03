@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const { verificarToken } = require("../middlewares/auth.middleware");
 
-// 1. IMPORTAMOS TODAS LAS FUNCIONES DESGLOSADAS
+// 1. IMPORTAMOS TODAS LAS FUNCIONES
 const {
   obtenerUsuarios,
   registrarUsuario,
@@ -12,22 +12,27 @@ const {
   resetearContrasena,
 } = require("../controllers/usuario.controller");
 
+// --- DEBUG CONTROLADOR (Opcional, puedes borrarlo luego) ---
 console.log("--- DEBUG CONTROLADOR ---");
-console.log("obtenerUsuarios:", obtenerUsuarios); // Debería salir [AsyncFunction]
-console.log("obtenerSolicitudesReset:", obtenerSolicitudesReset); // Si sale 'undefined', algo raro pasa.
+console.log("obtenerUsuarios:", obtenerUsuarios);
 console.log("-------------------------");
 
 // Prefijo: /api/usuarios
-// --- RUTAS ESTÁTICAS (Van primero para evitar conflictos) ---
-router.get("/solicitudes", verificarToken, obtenerSolicitudesReset);
+
+// 🟢 APLICAMOS verificarToken a TODAS las rutas de este archivo
+// De esta forma req.user siempre estará definido y no habrá errores de 'rol'
+router.use(verificarToken);
+
+// --- RUTAS ESTÁTICAS ---
+router.get("/solicitudes", obtenerSolicitudesReset);
 
 // --- RUTAS CRUD ---
-router.get("/", obtenerUsuarios);
-router.post("/", registrarUsuario); // Verifica si tu función se llama crearUsuario
+router.get("/", obtenerUsuarios); // Ahora req.user.rol funcionará perfecto aquí
+router.post("/", registrarUsuario);
 
 // --- RUTAS DINÁMICAS (Con :id) ---
-router.put("/:id", actualizarUsuario); // Verifica si tu función se llama editarUsuario
+router.put("/:id", actualizarUsuario);
 router.delete("/:id", eliminarUsuario);
-router.post("/reset/:id", verificarToken, resetearContrasena);
+router.post("/reset/:id", resetearContrasena);
 
 module.exports = router;

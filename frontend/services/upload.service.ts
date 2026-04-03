@@ -1,10 +1,17 @@
-// frontend/services/upload.service.ts
 import api from "./api";
 
 // 1. Subir archivo normal (Input File)
-export const uploadImageToLocal = async (file: File): Promise<string> => {
+export const uploadImageToLocal = async (
+  file: File,
+  folder?: string,
+): Promise<string> => {
   const formData = new FormData();
-  formData.append("file", file);
+  formData.append("file", file); // Asegúrate de que coincida con lo que espera Multer en upload.single('file')
+
+  // 🟢 Si nos pasan una carpeta, la agregamos al formulario
+  if (folder) {
+    formData.append("folder", folder);
+  }
 
   try {
     const { data } = await api.post("/upload", formData, {
@@ -17,10 +24,13 @@ export const uploadImageToLocal = async (file: File): Promise<string> => {
   }
 };
 
-// 2. Subir Base64 (Signature Pad) - ¡NUEVA!
-export const uploadBase64 = async (base64: string, fileName: string) => {
+// 2. Subir Base64 (Signature Pad)
+export const uploadBase64 = async (
+  base64: string,
+  fileName: string,
+  folder?: string,
+) => {
   try {
-    // Convertimos el base64 a un Blob explícitamente como image/webp
     const res = await fetch(base64);
     const blob = await res.blob();
     const file = new File([blob], fileName, { type: "image/webp" });
@@ -28,7 +38,11 @@ export const uploadBase64 = async (base64: string, fileName: string) => {
     const formData = new FormData();
     formData.append("file", file);
 
-    // 🟢 Enviamos al endpoint de Firebase en el backend
+    // 🟢 Igual aquí, agregamos la carpeta si existe
+    if (folder) {
+      formData.append("folder", folder);
+    }
+
     const response = await api.post("/upload", formData);
     return response.data.url;
   } catch (error) {

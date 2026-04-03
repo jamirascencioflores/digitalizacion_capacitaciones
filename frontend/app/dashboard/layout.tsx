@@ -95,19 +95,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
-    // 🟢 MANEJAR CLICK EN NOTIFICACIÓN
     const handleNotificacionClick = async (notificacion: any) => {
-        setShowNotificaciones(false);
+        // 1. Marcar como leída
         if (!notificacion.leida) {
             try {
                 await api.put(`/notificaciones/${notificacion.id}/leer`);
-                cargarNotificaciones(); // Recargar para actualizar el número rojo
+                cargarNotificaciones();
             } catch (error) {
                 console.error("Error marcando como leída", error);
             }
         }
+
+        // 2. 🟢 REDIRECCIÓN DIRECTA (Usando la base de datos)
         if (notificacion.url_destino) {
             router.push(notificacion.url_destino);
+        } else {
+            // Si la notificación es antigua y no tiene URL, lo dejamos en el dashboard
+            router.push('/dashboard');
         }
     };
 
